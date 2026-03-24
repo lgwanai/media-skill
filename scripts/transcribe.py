@@ -77,7 +77,9 @@ def transcribe(media_path, output_dir="output"):
     os.makedirs(model_dir, exist_ok=True)
 
     audio_path = media_path
-    if media_path.lower().endswith((".mp4", ".mkv", ".avi")):
+    # 统一使用 ffmpeg 处理所有音视频格式，转换为 16kHz 单声道 wav 格式以适配 FunASR
+    # 这样可以支持广泛的视频 (mp4, mkv, avi, mov) 和音频 (mp3, wav, aac, m4a, flac) 格式
+    if media_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma")):
         audio_path = os.path.join(output_dir, "temp_audio.wav")
         extract_audio(media_path, audio_path)
 
