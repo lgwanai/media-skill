@@ -1,7 +1,16 @@
 import os
 import json
 import subprocess
+import hashlib
 from funasr import AutoModel
+
+def get_file_md5(file_path):
+    """计算文件的 MD5 摘要"""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 def load_config(config_path="config.txt"):
     config = {}
@@ -76,11 +85,38 @@ def transcribe(media_path, output_dir="output"):
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
+    print(f"计算文件 MD5: {media_path} ...")
+    file_md5 = get_file_md5(media_path)
+    print(f"文件 MD5: {file_md5}")
+
+    # 一个视频解析到一个独立目录中，以便管理和复用
+    base_name = os.path.splitext(os.path.basename(media_path))[0]
+    specific_output_dir = os.path.join(output_dir, f"{base_name}_{file_md5[:8]}")
+    os.makedirs(specific_output_dir, exist_ok=True)
+
+    json_path = os.path.join(specific_output_dir, "transcription.json")
+    srt_path = os.path.join(specific_output_dir, "transcription.srt")
+    txt_path = os.path.join(specific_output_dir, "transcription.txt")
+
+    # 检查是否已经解析过（MD5 匹配）
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+            
+            if isinstance(saved_data, list) and len(saved_data) > 0:
+                saved_md5 = saved_data[0].get("file_md5", "")
+                if saved_md5 == file_md5:
+                    print(f"✅ 发现已存在的解析记录且 MD5 匹配，跳过大模型调用！直接使用: {specific_output_dir}")
+                    return saved_data
+        except Exception as e:
+            print(f"读取历史解析结果失败，将重新解析: {e}")
+
     audio_path = media_path
     # 统一使用 ffmpeg 处理所有音视频格式，转换为 16kHz 单声道 wav 格式以适配 FunASR
     # 这样可以支持广泛的视频 (mp4, mkv, avi, mov) 和音频 (mp3, wav, aac, m4a, flac) 格式
     if media_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma")):
-        audio_path = os.path.join(output_dir, "temp_audio.wav")
+        audio_path = os.path.join(specific_output_dir, "temp_audio.wav")
         extract_audio(media_path, audio_path)
 
     print("加载 FunASR 模型...")
@@ -99,15 +135,18 @@ def transcribe(media_path, output_dir="output"):
     print(f"开始识别: {audio_path}")
     res = model.generate(input=audio_path, batch_size_s=300, sentence_timestamp=True, return_spk_res=True)
 
+    # 将 md5 摘要信息保存到识别结果中
+    if isinstance(res, list):
+        if len(res) > 0:
+            res[0]["file_md5"] = file_md5
+        else:
+            res.append({"file_md5": file_md5, "sentence_info": []})
+
     # Save JSON with timestamps
-    json_path = os.path.join(output_dir, "transcription.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)
         
-    srt_path = os.path.join(output_dir, "transcription.srt")
     generate_srt(res, srt_path)
-    
-    txt_path = os.path.join(output_dir, "transcription.txt")
     generate_txt(res, txt_path)
 
     print(f"识别完成，结果已保存至: \n - {json_path}\n - {srt_path}\n - {txt_path}")
