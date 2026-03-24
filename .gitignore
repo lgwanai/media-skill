@@ -1,0 +1,9 @@
+.venv/
+output/
+test/
+.python-version
+config.txt
+idea.md
+dist/
+package.sh
+RELEASE_NOTE.md

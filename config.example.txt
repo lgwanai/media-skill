@@ -1,0 +1,43 @@
+# Media Skill Configuration Example
+# 请将此文件复制并重命名为 config.txt，然后填入你自己的真实配置信息。
+
+# ---------------------------------------------------------
+# 1. 基础配置
+# ---------------------------------------------------------
+# 模型存放目录，用于存放 FunASR 等本地下载的模型，默认存放于 models/ 目录
+MODEL_DIR = models/
+
+# ---------------------------------------------------------
+# 2. 纯文本语义分析大模型配置 (Step 2)
+# 用于第二步：通过纯文本判断并剔除明显的废话、结巴、重复
+# ---------------------------------------------------------
+# 大模型 API 接口地址（兼容 OpenAI 格式）
+TEXT_LLM_URL = https://api.deepseek.com/v1
+# 你的大模型 API Key
+TEXT_LLM_API_KEY = your_text_llm_api_key_here
+# 使用的大模型名称（如 deepseek-chat, gpt-4o, qwen-plus 等）
+TEXT_LLM_MODEL_NAME = deepseek-chat
+
+# ---------------------------------------------------------
+# 3. 多模态大模型配置 (Step 3)
+# 用于第三步：基于视频画面和声音进行多模态深度识别，精细剔除局部瑕疵
+# ---------------------------------------------------------
+# 多模态大模型 API 接口地址（兼容 OpenAI 格式，目前推荐小米 Omini 官方接口：https://platform.xiaomimimo.com/#/console/usage）
+OMINI_URL = https://api.xiaomimimo.com/v1
+# 你的多模态大模型 API Key
+OMINI_API_KEY = your_omini_api_key_here
+# 使用的多模态大模型名称
+OMINI_MODEL_NAME = mimo-v2-omni
+
+# ---------------------------------------------------------
+# 4. 腾讯云 COS 配置 (对象存储)
+# 用于将本地切片视频上传至云端，以获取公网 URL 供多模态大模型读取
+# ---------------------------------------------------------
+# 腾讯云 API 密钥 ID
+COS_SECRET_ID = your_cos_secret_id_here
+# 腾讯云 API 密钥 Key
+COS_SECRET_KEY = your_cos_secret_key_here
+# 存储桶所在地域（如 ap-beijing, ap-shanghai, ap-guangzhou 等）
+COS_REGION = ap-beijing
+# 存储桶名称（格式为 BucketName-APPID）
+COS_BUCKET_NAME = your_bucket_name_here
