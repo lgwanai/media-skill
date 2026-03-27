@@ -3,6 +3,54 @@ import json
 import subprocess
 import hashlib
 from funasr import AutoModel
+import sys
+
+# 为 funasr 1.x 补充注册 ERes2Net 模型
+from funasr.register import tables
+import time
+import torch
+import numpy as np
+from funasr.models.campplus.utils import extract_feature
+from funasr.utils.load_utils import load_audio_text_image_video
+
+try:
+    from funasr.models.eres2net.eres2net_aug import ERes2NetAug
+    class ERes2NetAugWrapper(ERes2NetAug):
+        def __init__(self, **kwargs):
+            super().__init__(
+                m_channels=kwargs.get("m_channels", 64),
+                feat_dim=kwargs.get("feat_dim", 80),
+                embedding_size=kwargs.get("embedding_size", 192),
+                pooling_func=kwargs.get("pooling_func", "TSTP"),
+                two_emb_layer=kwargs.get("two_emb_layer", False),
+            )
+            
+        def inference(self, data_in, data_lengths=None, key: list = None, tokenizer=None, frontend=None, **kwargs):
+            meta_data = {}
+            time1 = time.perf_counter()
+            audio_sample_list = load_audio_text_image_video(
+                data_in, fs=16000, audio_fs=kwargs.get("fs", 16000), data_type="sound"
+            )
+            time2 = time.perf_counter()
+            meta_data["load_data"] = f"{time2 - time1:0.3f}"
+            speech, speech_lengths, speech_times = extract_feature(audio_sample_list)
+            speech = speech.to(device=kwargs["device"])
+            time3 = time.perf_counter()
+            meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
+            meta_data["batch_data_time"] = np.array(speech_times).sum().item() / 16000.0
+            
+            with torch.no_grad():
+                spk_embedding = self.forward(speech.to(torch.float32))
+            results = [{"spk_embedding": spk_embedding}]
+            return results, meta_data
+
+    tables.register("model_classes", "iic/speech_eres2net_sv_zh-cn_16k-common")(ERes2NetAugWrapper)
+except Exception as e:
+    print(f"注册 ERes2Net 模型失败，请确认 funasr 版本: {e}")
+
+# 确保可以引入 scripts 目录下的其他模块
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from utils import load_config
 
 def get_file_md5(file_path):
     """计算文件的 MD5 摘要"""
@@ -12,21 +60,11 @@ def get_file_md5(file_path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-def load_config(config_path="config.txt"):
-    config = {}
-    if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    config[k.strip()] = v.strip()
-    return config
-
 def extract_audio(video_path, audio_path):
-    print(f"提取音频: {video_path} -> {audio_path}")
+    print(f"提取音频并进行降噪处理: {video_path} -> {audio_path}")
     cmd = [
         "ffmpeg", "-y", "-i", video_path, 
-        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", 
+        "-vn", "-af", "afftdn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", 
         audio_path
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -120,20 +158,31 @@ def transcribe(media_path, output_dir="output"):
         extract_audio(media_path, audio_path)
 
     print("加载 FunASR 模型...")
-    # Initialize the model pipeline (Paraformer + VAD + PUNC + CAM++)
+    # Initialize the model pipeline (Paraformer-large + VAD + PUNC + ERes2Net)
     model = AutoModel(
-        model="paraformer-zh",
+        model="iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
         model_revision="v2.0.4",
-        vad_model="fsmn-vad",
+        vad_model="damo/speech_fsmn_vad_zh-cn-16k-common-pytorch",
         vad_model_revision="v2.0.4",
-        punc_model="ct-punc",
+        punc_model="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
         punc_model_revision="v2.0.4",
-        spk_model="cam++",
-        spk_model_revision="v2.0.2",
+        spk_model="iic/speech_eres2net_sv_zh-cn_16k-common",
+        spk_model_revision="v1.0.5",
+        disable_update=True # 加快启动速度
     )
 
     print(f"开始识别: {audio_path}")
-    res = model.generate(input=audio_path, batch_size_s=300, sentence_timestamp=True, return_spk_res=True)
+    # 缩小 batch_size_s 以应对快速交替对话（原为 300）
+    res = model.generate(
+        input=audio_path, 
+        batch_size_s=60, 
+        sentence_timestamp=True, 
+        return_spk_res=True,
+        vad_kwargs={
+            "max_single_segment_time": 15000,  # 缩小单段最大时长至15秒(默认30秒)，防止多人在同一长段中混杂
+            "max_end_silence_time": 400,       # 尾部静音阈值缩短至400ms(默认800ms)，遇到极短停顿立刻切分，极大地提升抢话/快语速场景的准确度
+        }
+    )
 
     # 将 md5 摘要信息保存到识别结果中
     if isinstance(res, list):

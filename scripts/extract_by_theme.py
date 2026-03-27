@@ -3,21 +3,11 @@ import sys
 import json
 import subprocess
 import re
-from openai import OpenAI
 
 # 确保可以引入 scripts 目录下的其他模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.transcribe import transcribe
-
-def load_config(config_path="config.txt"):
-    config = {}
-    if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    config[k.strip()] = v.strip()
-    return config
+from scripts.utils import load_config, get_openclaw_headers, create_openai_client
 
 def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
     os.makedirs(output_dir, exist_ok=True)
@@ -37,7 +27,10 @@ def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
     # 2. LLM 分析提取
     print("\n>>> 步骤 2：优化主题描述...")
     config = load_config()
-    client = OpenAI(
+    
+    extra_headers = get_openclaw_headers(config)
+        
+    client = create_openai_client(
         api_key=config.get("TEXT_LLM_API_KEY"),
         base_url=config.get("TEXT_LLM_URL")
     )
@@ -59,7 +52,8 @@ def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
         enhance_resp = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": enhance_prompt}],
-            temperature=0.7
+            temperature=0.7,
+            extra_headers=extra_headers if extra_headers else None
         )
         enhanced_theme = enhance_resp.choices[0].message.content.strip()
         print(f"优化后的提取标准：\n{enhanced_theme}\n")
@@ -120,7 +114,8 @@ def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
         try:
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                extra_headers=extra_headers if extra_headers else None
             )
             content = response.choices[0].message.content.strip()
             # 清理可能的 markdown 标记

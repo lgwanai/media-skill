@@ -1,30 +1,24 @@
 import os
 import json
-import base64
 import subprocess
-import requests
+import re
+import sys
+import base64
 
-def load_config(config_path="config.txt"):
-    config = {}
-    if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    config[k.strip()] = v.strip()
-    return config
+from utils import load_config, get_openclaw_headers, create_openai_client
+from cos_client import COSClient
 
-def encode_video_to_base64(video_path):
-    """将视频文件编码为 Base64 字符串"""
-    with open(video_path, "rb") as video_file:
-        return base64.b64encode(video_file.read()).decode('utf-8')
+def get_video_duration(video_path):
+    cmd = [
+        "ffprobe", "-v", "error", "-show_entries",
+        "format=duration", "-of",
+        "default=noprint_wrappers=1:nokey=1", video_path
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return float(result.stdout.strip()) * 1000  # 转换为毫秒
 
 def upload_video_to_cos(video_path, config):
     """使用 scripts/cos_client.py 上传视频到腾讯云COS并返回URL"""
-    import os
-    import sys
-    
-    # 将相关配置写入环境变量，供 cos_client 读取
     os.environ['COS_SECRET_ID'] = config.get("COS_SECRET_ID", "")
     os.environ['COS_SECRET_KEY'] = config.get("COS_SECRET_KEY", "")
     os.environ['COS_REGION'] = config.get("COS_REGION", "ap-beijing")
@@ -35,13 +29,10 @@ def upload_video_to_cos(video_path, config):
         return None
         
     try:
-        # 确保能导入同目录下的 cos_client
         scripts_dir = os.path.dirname(os.path.abspath(__file__))
         if scripts_dir not in sys.path:
             sys.path.append(scripts_dir)
             
-        from cos_client import COSClient
-        
         client = COSClient()
         print(f"正在使用 cos_client 上传 {video_path} 到 COS...")
         result = client.upload_file(video_path)
@@ -53,206 +44,17 @@ def upload_video_to_cos(video_path, config):
         else:
             print(f"上传 COS 失败: {result.get('error')}")
             return None
-            
     except Exception as e:
         print(f"上传 COS 发生异常: {e}")
         return None
 
-def call_omini_model(video_path, config):
+def step1_hard_slicing(transcription_json_path, temp_dir="output/temp_clips"):
     """
-    使用小米官方接口和 COS 上传调用 Omini 模型
+    第一步：虚拟硬切片
+    根据字幕时间戳：前后都需要多保留 300 毫秒，确保语气连贯。
+    为了提升性能，我们不再调用 ffmpeg 实际切片，而是只计算并记录元数据（metadata）。
     """
-    api_key = config.get("MIMO_API_KEY", config.get("OMINI_API_KEY"))
-    api_url = config.get("MIMO_URL", config.get("OMINI_URL", "https://api.xiaomimimo.com/v1"))
-    model_name = config.get("OMINI_MODEL_NAME", "mimo-v2-omni")
-
-    if not api_key:
-        print("错误: 缺少 API_KEY (MIMO_API_KEY 或 OMINI_API_KEY)")
-        return "keep"
-        
-    # 上传到 COS
-    video_url = upload_video_to_cos(video_path, config)
-    if not video_url:
-        print("无法获取视频 URL，默认保留片段")
-        return "keep"
-        
-    try:
-        from openai import OpenAI
-        client = OpenAI(
-            api_key=api_key,
-            base_url=api_url
-        )
-        
-        print(f"调用 Omini 模型: {model_name}, URL: {api_url}")
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are MiMo, an AI assistant developed by Xiaomi. Today is date: Tuesday, December 16, 2025. Your knowledge cutoff date is December 2024."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "video_url",
-                            "video_url": {
-                                "url": video_url
-                            },
-                            "fps": 2,
-                            "media_resolution": "default"
-                        },
-                        {
-                            "type": "text",
-                            "text": "你是一个专业的视频剪辑师。请分析这段短视频的画面和声音，找出其中无意义的内容（如单纯的气口、结巴、严重的重复口误、没有实质性语义的片段、过长的无声停顿）。\n如果整个视频片段都完全没有意义（全是废话），请直接回复 'discard'。\n如果整个视频都很连贯、有意义，没有任何需要剪辑的地方，请直接回复 'keep'。\n如果视频中只有某一段是结巴、重复或冗长的停顿，需要精细裁剪，请返回一个 JSON 格式的数组，包含需要剔除的片段的开始和结束时间（以秒为单位，保留两位小数，从 0 开始计算）。例如：[{\"start\": 1.25, \"end\": 2.50}]\n请注意，只需输出 'keep'、'discard' 或 JSON 数组，绝不要输出其他任何文字，包括 markdown 标记！"
-                        }
-                    ]
-                }
-            ],
-            max_completion_tokens=1024,
-            temperature=0.1
-        )
-        
-        result = completion.model_dump()
-        if "choices" in result and len(result["choices"]) > 0:
-            content = result["choices"][0].get("message", {}).get("content", "").strip()
-            print(f"Omini 模型原始返回: {content}")
-            
-            # 清理可能的 markdown 标记
-            content = content.replace("```json", "").replace("```", "").strip()
-            
-            if content.lower() == "discard" or ("discard" in content.lower() and "[" not in content):
-                return "discard"
-            elif content.lower() == "keep" or ("keep" in content.lower() and "[" not in content):
-                return "keep"
-            else:
-                import re
-                match = re.search(r'\[.*\]', content, re.DOTALL)
-                if match:
-                    try:
-                        import json
-                        intervals = json.loads(match.group(0))
-                        if isinstance(intervals, list):
-                            return intervals
-                    except Exception as e:
-                        print(f"解析 Omini 时间戳 JSON 失败: {e}")
-                return "keep"
-        return "keep"
-    except Exception as e:
-        print(f"调用 Omini 模型发生异常: {e}")
-        return "keep" # 失败时默认保留，防止误删
-
-def step1_detect_silence(transcription_json_path, output_json="output/step1_silence.json"):
-    """
-    第一步：初步识别（时间戳打底）
-    只识别，不剪辑，将视频中的“空白”、“气口”时间点记录在 json 文件中
-    """
-    print(f"Step 1: 分析 {transcription_json_path} 中的空白/气口...")
-    with open(transcription_json_path, "r", encoding="utf-8") as f:
-        res = json.load(f)
-        
-    if not res or not isinstance(res, list) or len(res) == 0:
-        print("转写结果为空")
-        return []
-        
-    sentences = res[0].get("sentence_info", [])
-    silences = []
-    
-    # FunASR 在生成 sentence_info 时，为了句子连贯，start 和 end 有时会相连。
-    # 为了寻找真实的空白/气口，我们需要提取词级别或子句级别的 timestamp。
-    timestamps = res[0].get("timestamp", [])
-    if not timestamps:
-        print("未找到词级别时间戳")
-        return []
-        
-    last_end = 0
-    # 词级别时间戳阈值设为 400ms，认为停顿大于 400ms 就是一个气口/空白
-    
-    # 检测开头的静音（0 到第一个词的开始）
-    if timestamps[0][0] > 100: # 如果开头超过 100ms 没声音
-        silences.append({
-            "start_ms": 0,
-            "end_ms": timestamps[0][0],
-            "type": "silence",
-            "action": "discard",
-            "reason": "开头静音"
-        })
-        
-    for ts in timestamps:
-        start_ms, end_ms = ts[0], ts[1]
-        
-        # 记录中间的空白气口
-        if last_end > 0 and start_ms - last_end > 400:
-            silences.append({
-                "start_ms": last_end,
-                "end_ms": start_ms,
-                "type": "silence",
-                "action": "discard",
-                "reason": "中间停顿"
-            })
-            
-        last_end = end_ms
-
-    os.makedirs(os.path.dirname(output_json), exist_ok=True)
-    with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(silences, f, ensure_ascii=False, indent=2)
-    return silences
-
-def call_llm_for_text(text_list, config):
-    """
-    调用大模型对纯文本片段进行语义分析
-    输入: 包含字典的列表 [{"id": 0, "text": "呃"}, {"id": 1, "text": "嗯大家好啊"}]
-    输出: 返回需要被剔除（无意义、严重重复、纯语气词）的 id 列表
-    """
-    api_key = config.get("TEXT_LLM_API_KEY", config.get("OMINI_API_KEY"))
-    api_url = config.get("TEXT_LLM_URL", config.get("OMINI_URL"))
-    model_name = config.get("TEXT_LLM_MODEL_NAME", "qwen/qwen-2.5-72b-instruct")
-
-    if not api_key or not api_url:
-        print("缺少 TEXT_LLM_API_KEY 或 TEXT_LLM_URL")
-        return []
-
-    prompt = (
-        "你是一个极其严格的专业视频剪辑师。我将提供一组视频台词的 JSON 列表，每个对象包含 id 和 text。\n"
-        "请帮我找出其中**完全没有实质意义**的整段废话，或者**前后句子严重重复**的口误片段，需要剔除的规则如下：\n"
-        "1. 纯语气词：如仅包含“呃”、“啊”、“那个”、“然后”等，没有任何实际内容的完整句子。\n"
-        "2. 句子间口误与重说：如果紧挨着的两句话表达了完全相同的意思（比如上一句是“大家好啊”，下一句是“大家好”），说明讲话者卡壳重说了。你必须把前面那句不完整的句子剔除。\n"
-        "3. 注意：如果一句话内部存在局部的结巴或重复（例如“它专门是帮啊它专门是使用小米的”），但整句话包含重要信息，请**不要**将其剔除，保留它，后续会由其他模型进行精细裁剪。\n"
-        "请返回一个 JSON 数组，里面包含所有需要剔除的片段的 id 数字，例如：[0, 1]。\n"
-        "注意：除了 JSON 数组外，不要输出任何其他解释文字！直接输出形如 [0, 1, 2] 的结果。\n"
-        f"台词列表：\n{json.dumps(text_list, ensure_ascii=False)}"
-    )
-
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=api_url)
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
-        )
-        content = response.choices[0].message.content.strip()
-        print(f"大模型原始返回: {content}")
-        # 简单清理可能带有的 markdown 标记
-        content = content.replace("```json", "").replace("```", "").strip()
-        
-        # 提取数组部分
-        import re
-        match = re.search(r'\[.*?\]', content, re.DOTALL)
-        if match:
-            content = match.group(0)
-            
-        return json.loads(content)
-    except Exception as e:
-        print(f"调用纯文本语义分析失败: {e}")
-    return []
-
-def step2_semantic_clip(transcription_json_path, video_path, temp_dir="output/temp_clips", output_json="output/step2_semantic_clips.json"):
-    """
-    第二步：文字语义精剪（切片摘取）
-    对照时间轴切片视频，复制到临时文件夹，并记录时间片摘取时间轴
-    """
-    print(f"Step 2: 语义精剪与视频切片...")
+    print(f"\n=== Step 1: 虚拟硬切片 (基于 {transcription_json_path}) ===")
     os.makedirs(temp_dir, exist_ok=True)
     
     with open(transcription_json_path, "r", encoding="utf-8") as f:
@@ -260,149 +62,280 @@ def step2_semantic_clip(transcription_json_path, video_path, temp_dir="output/te
         
     sentences = res[0].get("sentence_info", []) if res else []
     clips = []
-    config = load_config()
-    
-    # 构造供大模型分析的文本列表
-    text_list_for_llm = []
-    for i, sentence in enumerate(sentences):
-        text_list_for_llm.append({"id": i, "text": sentence.get("text", "")})
-        
-    print("调用大模型进行纯文本语义分析，剔除无意义废话和重复...")
-    discard_ids = call_llm_for_text(text_list_for_llm, config)
-    print(f"大模型判定需要剔除的片段 ID: {discard_ids}")
-    
-    # 将被判定为 discard 的片段记录到 clips（之后将与 step1 合并剔除）
-    # 同时，如果有些句子包含轻微语气词但不至于完全剔除，也可以摘出来进入 step3
-    # 这里我们简化逻辑：被大模型纯文本判定为 discard 的直接记录为 discard。
-    # 另外筛选一些长句子中包含模糊语气词的，进入 step3 多模态判定。
-    
-    # 获取完整的文本内容，以便检查模型是否由于切句问题没有给出正确的 id
-    # FunASR 有时切句很长，大模型可能不返回这个长句的 ID，只希望剔除长句中的一部分。
-    # 为了解决这个问题，我们需要让大模型返回“需要剔除的具体文本”，或者由我们在提示词中要求更精确的处理。
-    # 但由于目前大模型返回的是句子 ID，如果一句话包含了重复部分和正常部分（没被切开），大模型就很难只剔除 ID。
-    # 我们先检查 transcription.json 里的切句情况。
-    
-    filler_words = ["嗯", "啊", "呃", "那个", "然后"]
-    clip_index = 0
     
     for i, sentence in enumerate(sentences):
         text = sentence.get("text", "")
-        start_ms = sentence.get("start", 0)
-        end_ms = sentence.get("end", 0)
+        orig_start = sentence.get("start", 0)
+        orig_end = sentence.get("end", 0)
         
-        # 增加一个简单的规则：如果大模型没有剔除，但句子内部存在明显的重复，我们将其送入 step3 多模态，或者通过规则切分。
-        # 由于这里是粗剪，如果当前句子没被标记为 discard，我们检查它是否需要进入 step3
-        if i in discard_ids:
-            # 纯文本就能确定的废话，直接打 discard 标
-            clips.append({
-                "clip_file": None,
-                "text": text,
-                "start_ms": start_ms,
-                "end_ms": end_ms,
-                "action": "discard",
-                "reason": "语义分析判定为废话"
-            })
-        elif len(text.replace("，", "").replace("。", "").replace("！", "").replace("？", "").strip()) <= 2 and any(w in text for w in filler_words):
-            # 增加基于规则的硬匹配：如果一句话除掉标点后非常短(<=2个字)且包含语气词，直接丢弃
-            clips.append({
-                "clip_file": None,
-                "text": text,
-                "start_ms": start_ms,
-                "end_ms": end_ms,
-                "action": "discard",
-                "reason": "规则判定为纯语气词"
-            })
-        else:
-            # 优化逻辑：只有包含明显的磕巴重复模式，或者包含语气词的长句，才进入 step3
-            import re
-            # 检查是否有明显的重复词（至少两个字重复，如 "专门是" -> "专门是"）
-            has_repetition = bool(re.search(r'(.{2,4}).*\1', text))
-            has_filler = any(w in text for w in filler_words) and len(text) > 2
-            
-            if has_repetition or has_filler:
-                clip_index += 1
-                clip_file = os.path.join(temp_dir, f"clip_{clip_index}.mp4")
-                
-                start_sec = start_ms / 1000.0
-                duration_sec = (end_ms - start_ms) / 1000.0
-                
-                cmd = [
-                    "ffmpeg", "-y", "-i", video_path,
-                    "-ss", str(start_sec), "-t", str(duration_sec),
-                    "-c", "copy",
-                    clip_file
-                ]
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                clips.append({
-                    "clip_file": clip_file,
-                    "text": text,
-                    "start_ms": start_ms,
-                    "end_ms": end_ms,
-                    "action": "pending_multimodal" # 等待第三步处理
-                })
-            else:
-                # 既没有重复也没有语气词的正常句子，直接保留，不进入 omini
-                clips.append({
-                    "clip_file": None,
-                    "text": text,
-                    "start_ms": start_ms,
-                    "end_ms": end_ms,
-                    "action": "keep",
-                    "reason": "正常句子直接保留"
-                })
-            
+        # 前后保留 300 毫秒
+        clip_start = max(0, orig_start - 300)
+        clip_end = orig_end + 300
+        
+        start_sec = clip_start / 1000.0
+        duration_sec = (clip_end - clip_start) / 1000.0
+        
+        print(f"记录虚拟切片 [{i}]: {start_sec}s - {start_sec + duration_sec}s")
+        
+        clips.append({
+            "id": i,
+            "text": text,
+            "orig_start": orig_start,
+            "orig_end": orig_end,
+            "clip_start": clip_start,
+            "clip_end": clip_end,
+            "timestamp_array": sentence.get("timestamp", [])
+        })
+        
+    output_json = "output/step1_clips.json"
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(clips, f, ensure_ascii=False, indent=2)
-    return clips
+        
+    return clips, output_json
 
-def step3_multimodal_filter(clips_json_path, video_path, output_json="output/step3_multimodal_filter.json"):
+def step2_llm_analysis(clips_json_path, config):
     """
-    第三步：多模态深度精剪（降本增效）
-    如果只有单个短片段，压缩短片段送入 omini 大模型识别；
-    如果连续多个片段都需要 omini 识别（可能是跨段的结巴、重复），则将它们合并成一个大片段后送给 omini 进行全局时间轴裁剪。
+    第二步：语言大模型分析语义
     """
-    print(f"Step 3: 读取切片配置 {clips_json_path} 并调用 Omini 大模型进行多模态精剪...")
-    config = load_config()
+    print(f"\n=== Step 2: 语言大模型语义分析 ===")
+    with open(clips_json_path, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+        
+    api_key = config.get("TEXT_LLM_API_KEY", config.get("OMINI_API_KEY"))
+    api_url = config.get("TEXT_LLM_URL", config.get("OMINI_URL"))
+    model_name = config.get("TEXT_LLM_MODEL_NAME", "qwen/qwen-2.5-72b-instruct")
+    
+    text_list = [{"id": c["id"], "text": c["text"]} for c in clips]
+    
+    prompt = """你是一个专业的视频剪辑语义分析专家。我将提供一组按时间顺序排列的视频台词片段（包含 id 和 text）。
+你需要严格按照以下 4 条逻辑对这些片段进行分析：
+
+1、判断本身语言是否有实际意义，比如整个字幕，只有“啊啊”、“哦”、“嗯”、“那个”这种语气词，那么直接标记动作：discard。
+2、如果判断是打招呼等正常语句，需要保留，但是保留后还需要对比**前一个片段**的语义，是否一致（是语义一致，不是字幕完全一致。比如“大家好啊”和“呃大家好”就是语义一致）。那么选择两个中表达最通顺的一个，标记为：keep，另一个标记为：discard。
+  【注意】：在对比时，如果开始对比发现前一个已经被标记为 discard，那么就需要再往前追溯，直到找到没有标记为 discard 的一条进行对比。
+3、如果单条语句中间出现了重复词汇、磕巴或明显不通顺的情况（例如“它专门是帮它专门是”），将其标记为 partial_discard，并且必须在 `discard_text` 字段中提取出需要被精确剔除的**冗余文字片段**（例如 "它专门是帮" 或者 "啊这个"，总之是你认为需要剪掉的那部分废话原话）。
+4、如果有连续的两个或多个片段合起来看出现了部分语义重复的情况（即出现了其他语句，导致两句话合并起来有重复），你需要把这几个片段合并为一个处理单元，动作标记为 partial_discard，并在 `discard_text` 字段中给出需要从这几句话中剔除的连续冗余文字。
+
+输出格式要求：
+请直接输出一个 JSON 数组，每个元素包含 ids（当前动作涉及的片段id数组）、action（必须是 discard、keep 或 partial_discard）以及 reason（理由）。如果是 partial_discard，还必须包含 discard_text 字段。
+例如：
+[
+  {"ids": [0], "action": "discard", "reason": "纯语气词无意义"},
+  {"ids": [1], "action": "keep", "reason": "正常打招呼，保留"},
+  {"ids": [2], "action": "discard", "reason": "与id=1语义一致且包含语气词，故剔除"},
+  {"ids": [3], "action": "keep", "reason": "无异常保留"},
+  {"ids": [4], "action": "partial_discard", "reason": "内部存在重复词汇，需精细化处理", "discard_text": "它专门是帮"},
+  {"ids": [5, 6], "action": "partial_discard", "reason": "5和6合并起来存在部分语义重复", "discard_text": "重复的一句话"}
+]
+绝对不要输出任何其他解释文字或 markdown 代码块标记，只能输出纯 JSON 字符串！
+
+台词列表：
+""" + json.dumps(text_list, ensure_ascii=False)
+
+    try:
+        client = create_openai_client(api_key=api_key, base_url=api_url)
+        extra_headers = get_openclaw_headers(config)
+            
+        print("正在调用文本大模型进行分析...")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            extra_headers=extra_headers if extra_headers else None
+        )
+        content = response.choices[0].message.content.strip()
+        print(f"大模型原始返回:\n{content}")
+        
+        # 提取 JSON
+        match = re.search(r'\[.*\]', content, re.DOTALL)
+        if match:
+            content = match.group(0)
+            
+        llm_results = json.loads(content)
+        
+        # 将结果映射回 clips，支持多片段共用一个 action 和 discard_text
+        for res in llm_results:
+            action = res.get("action")
+            reason = res.get("reason", "")
+            ids = res.get("ids", [])
+            discard_text = res.get("discard_text", "")
+            
+            for cid in ids:
+                # 寻找对应 clip
+                for clip in clips:
+                    if clip["id"] == cid:
+                        clip["action"] = action
+                        clip["reason"] = reason
+                        if action == "partial_discard":
+                            clip["group_ids"] = ids
+                            clip["discard_text"] = discard_text
+                            
+    except Exception as e:
+        print(f"调用纯文本语义分析失败: {e}")
+        # 如果失败，默认全部 keep
+        for clip in clips:
+            if "action" not in clip:
+                clip["action"] = "keep"
+
+    output_json = "output/step2_clips.json"
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(clips, f, ensure_ascii=False, indent=2)
+        
+    return clips, output_json
+
+def tokenize(text):
+    import re
+    tokens = []
+    matches = re.finditer(r'[a-zA-Z0-9]+|[^\s\w]|[\u4e00-\u9fa5]', text)
+    for m in matches:
+        token = m.group(0)
+        if re.match(r'[，。、！？：；（）《》“”‘’"\'\.,!?;:\(\)\[\]-]', token):
+            continue
+        if token.strip():
+            tokens.append(token)
+    return tokens
+
+def get_timestamp_for_substring(text, substring, timestamps):
+    text_tokens = tokenize(text)
+    sub_tokens = tokenize(substring)
+    if not sub_tokens:
+        return None
+    start_idx = -1
+    for i in range(len(text_tokens) - len(sub_tokens) + 1):
+        match = True
+        for j in range(len(sub_tokens)):
+            if text_tokens[i+j].lower() != sub_tokens[j].lower():
+                match = False
+                break
+        if match:
+            start_idx = i
+            break
+    if start_idx == -1:
+        return None
+    end_idx = start_idx + len(sub_tokens) - 1
+    if start_idx < len(timestamps) and end_idx < len(timestamps):
+        return {
+            "start": timestamps[start_idx][0],
+            "end": timestamps[end_idx][1]
+        }
+    return None
+
+def step3_precise_trimming(clips_json_path):
+    """
+    第三步：精确提取剔除时间戳
+    将标记为 partial_discard 的片段，通过 FunASR 提供的字符级/词级时间戳，
+    精确找出 discard_text 对应的绝对时间。
+    """
+    print(f"\n=== Step 3: 基于字级时间戳精细化处理 ===")
+    with open(clips_json_path, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+        
+    processed_ids = set()
+    for clip in clips:
+        if clip["id"] in processed_ids:
+            continue
+            
+        action = clip.get("action", "keep")
+        if action == "partial_discard":
+            group_ids = clip.get("group_ids", [clip["id"]])
+            discard_text = clip.get("discard_text", "")
+            
+            # 组合这几个片段的文本和时间戳
+            combined_text = ""
+            combined_ts = []
+            target_clips = []
+            
+            for cid in group_ids:
+                # 寻找 clip
+                c = next((item for item in clips if item["id"] == cid), None)
+                if c:
+                    target_clips.append(c)
+                    combined_text += c["text"]
+                    combined_ts.extend(c.get("timestamp_array", []))
+                    processed_ids.add(cid)
+                    
+            if discard_text and target_clips:
+                print(f"正在匹配废话 '{discard_text}' ...")
+                interval = get_timestamp_for_substring(combined_text, discard_text, combined_ts)
+                if interval:
+                    print(f"成功匹配到剔除区间: {interval}")
+                    # 将这个剔除区间记录在第一条 clip 上，在合并时统一计算即可，因为这是基于原视频的绝对时间
+                    target_clips[0].setdefault("discard_intervals", []).append(interval)
+                else:
+                    print(f"警告：未能在原文 '{combined_text}' 中精确匹配到 '{discard_text}'")
+                    
+    output_json = "output/step3_clips.json"
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(clips, f, ensure_ascii=False, indent=2)
+        
+    return clips, output_json
+
+def step4_analyze_silence(clips_json_path, video_path, config, temp_dir="output/temp_clips"):
+    """
+    第四步：非语言片段分析（默认关闭）
+    找出所有语言片段之间的间隙（非语言片段），如果大于 500ms，压缩后交给 Omini 判断是否有意义。
+    如果有意义（保留），记录这些间隙以供最后合并。
+    """
+    enable_silence_analysis = config.get("ENABLE_SILENCE_ANALYSIS", "false").lower() == "true"
+    print(f"\n=== Step 4: 非语言片段智能保留 (当前配置: {'开启' if enable_silence_analysis else '关闭'}) ===")
     
     with open(clips_json_path, "r", encoding="utf-8") as f:
         clips = json.load(f)
         
-    filtered = []
+    rescued_silences = []
     
-    # 找出所有需要 omini 处理的连续区间
-    # pending_multimodal
-    blocks = []
-    current_block = []
-    
+    if not enable_silence_analysis:
+        output_json = "output/step4_silences.json"
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(rescued_silences, f, ensure_ascii=False, indent=2)
+        return rescued_silences, output_json
+
+    try:
+        video_duration = get_video_duration(video_path)
+    except Exception as e:
+        print(f"获取视频长度失败，跳过非语言片段分析: {e}")
+        return [], "output/step4_silences.json"
+        
+    # 收集所有的有效语言片段（包含 keep 和 partial_discard 的硬切片区间，去除完全 discard 的片段）
+    speech_intervals = []
     for clip in clips:
-        if clip.get("action") == "pending_multimodal":
-            current_block.append(clip)
-        else:
-            if current_block:
-                blocks.append(current_block)
-                current_block = []
-            filtered.append(clip)
+        if clip.get("action") != "discard":
+            speech_intervals.append([clip["clip_start"], clip["clip_end"]])
             
-    if current_block:
-        blocks.append(current_block)
+    speech_intervals.sort(key=lambda x: x[0])
+    
+    # 提取所有大于 500ms 的间隙
+    gaps = []
+    current_time = 0
+    for s_start, s_end in speech_intervals:
+        if s_start > current_time + 500:
+            gaps.append([current_time, s_start])
+        current_time = max(current_time, s_end)
         
-    for block in blocks:
-        if not block:
-            continue
-            
-        # 计算整个 block 的总时间跨度
-        start_ms = block[0]["start_ms"]
-        end_ms = block[-1]["end_ms"]
-        start_sec = start_ms / 1000.0
-        duration_sec = (end_ms - start_ms) / 1000.0
+    if video_duration > current_time + 500:
+        gaps.append([current_time, video_duration])
         
-        # 截取整个大片段
-        merged_clip_file = block[0]["clip_file"].replace(".mp4", "_merged.mp4")
-        compressed_file = merged_clip_file.replace(".mp4", "_540p.mp4")
+    if not gaps:
+        print("未发现明显的非语言片段间隙。")
+    else:
+        print(f"共发现 {len(gaps)} 个非语言片段，开始分析...")
         
-        print(f"合并连续待检测片段并压缩 -> {compressed_file} (start: {start_sec}, duration: {duration_sec})")
-        # 直接从原视频截取合并后的完整大段并压缩
+    api_key = config.get("MIMO_API_KEY", config.get("OMINI_API_KEY"))
+    api_url = config.get("MIMO_URL", config.get("OMINI_URL", "https://api.xiaomimimo.com/v1"))
+    model_name = config.get("OMINI_MODEL_NAME", "mimo-v2-omni")
+    
+    client = None
+    if api_key:
+        client = create_openai_client(api_key=api_key, base_url=api_url)
+        
+    for idx, gap in enumerate(gaps):
+        gap_start, gap_end = gap[0], gap[1]
+        start_sec = gap_start / 1000.0
+        duration_sec = (gap_end - gap_start) / 1000.0
+        
+        compressed_file = os.path.join(temp_dir, f"silence_gap_{idx}_540p.mp4")
+        print(f"\n正在准备非语言片段 {idx}: {start_sec}s - {start_sec + duration_sec}s -> {compressed_file}")
+        
         cmd = [
             "ffmpeg", "-y", "-i", video_path,
             "-ss", str(start_sec), "-t", str(duration_sec),
@@ -412,149 +345,136 @@ def step3_multimodal_filter(clips_json_path, video_path, output_json="output/ste
         ]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        if os.path.exists(compressed_file):
-            print(f"调用 Omini 模型分析合并后的视频 {compressed_file}...")
-            action_result = call_omini_model(compressed_file, config)
-            print(f"合并视频模型判断结果: {action_result}")
-            
-            # 因为我们把几个 clip 合并起来检测了，所以这里把它们作为一个整体大 clip 存入 filtered
-            # 原来的短 clip 丢弃不用，替换成这个大 clip
-            merged_clip = {
-                "clip_file": compressed_file,
-                "text": " ".join([c["text"] for c in block]),
-                "start_ms": start_ms,
-                "end_ms": end_ms,
-            }
-            
-            if isinstance(action_result, list):
-                merged_clip["action"] = "partial_discard"
-                merged_clip["discard_intervals"] = action_result
-            else:
-                merged_clip["action"] = action_result
+        if client and os.path.exists(compressed_file):
+            video_url = upload_video_to_cos(compressed_file, config)
+            if video_url:
+                prompt_text = (
+                    "你是一个专业的视频画面分析专家。这段视频是去除了人物语音的非语言片段。请你判断这个画面是否具有保留价值。\n"
+                    "有意义的定义是：\n"
+                    "1、如果是电脑或者软件界面，需要有明显的鼠标操作或者界面交互；如果只有画面抖动，没有实质性的画面变化，判定为无意义。\n"
+                    "2、如果是人物，需要有明确的人物形象、动作和表情变化；如果没有明显变化，只是画面晃动或者静止，判定为无意义。\n"
+                    "3、如果是物品，需要有明确的运动或者运镜；如果物品静止或者只是画面抖动，判定为无意义。\n\n"
+                    "请先简要分析视频内容，然后必须在最后一行给出结论：\n"
+                    "【结论】: keep （如果有意义，需要保留）或者 【结论】: discard （如果无意义，需要删除）。"
+                )
                 
-            filtered.append(merged_clip)
-            
-            # 清理临时合并文件（如果需要保留排查可以注释掉）
-            # os.remove(compressed_file)
-        else:
-            # 如果截取失败，原样放回 keep
-            for c in block:
-                c["action"] = "keep"
-                filtered.append(c)
-
-    # 按 start_ms 重新排序，因为前面的分组把原本的顺序打乱了
-    filtered.sort(key=lambda x: x["start_ms"])
-    
+                try:
+                    extra_headers = get_openclaw_headers(config)
+                    print(f"调用 Omini 模型判断该片段是否有意义...")
+                    completion = client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": "You are MiMo, an AI assistant developed by Xiaomi."},
+                            {"role": "user", "content": [
+                                {"type": "video_url", "video_url": {"url": video_url}, "fps": 2},
+                                {"type": "text", "text": prompt_text}
+                            ]}
+                        ],
+                        max_completion_tokens=200,
+                        temperature=0.1,
+                        extra_headers=extra_headers if extra_headers else None
+                    )
+                    content = completion.choices[0].message.content.strip()
+                    print(f"Omini 判定结果:\n{content}")
+                    
+                    if "【结论】: keep" in content.lower() or "【结论】：keep" in content.lower() or "keep" in content.lower()[-20:]:
+                        rescued_silences.append({
+                            "start": gap_start,
+                            "end": gap_end,
+                            "reason": "Omini 判定为有意义的非语言片段"
+                        })
+                except Exception as e:
+                    print(f"调用 Omini 模型发生异常: {e}")
+                    
+    output_json = "output/step4_silences.json"
     with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(filtered, f, ensure_ascii=False, indent=2)
-    return filtered
+        json.dump(rescued_silences, f, ensure_ascii=False, indent=2)
+        
+    return rescued_silences, output_json
 
-def step4_merge_final(video_path, all_jsons, output_video="output/final_output.mp4"):
+def step5_final_merge(clips_json_path, silences_json_path, video_path, output_video="output/final_output.mp4"):
     """
-    第四步：综合成片合并
-    结合所有环节的 json，综合给出有效时间 json，最后对原有视频进行切割合并
+    第五步：最终合并
+    根据时间轴信息，提取原视频内容，合并成一个最终视频，画质需要按照原视频为准。
     """
-    print(f"Step 4: 综合有效时间，最终切割合并 -> {output_video}")
+    print(f"\n=== Step 5: 最终视频合并 ===")
+    with open(clips_json_path, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+        
+    with open(silences_json_path, "r", encoding="utf-8") as f:
+        silences = json.load(f)
+        
+    keep_intervals = []
+    global_discards = []
     
-    # 获取需要剔除的无效片段列表 (以毫秒计)
-    discard_intervals = []
-    
-    # 解析 step1 空白/气口
-    if "step1" in all_jsons and os.path.exists(all_jsons["step1"]):
-        with open(all_jsons["step1"], "r", encoding="utf-8") as f:
-            silences = json.load(f)
-            for s in silences:
-                if s.get("action") == "discard":
-                    discard_intervals.append((s["start_ms"], s["end_ms"]))
-                    
-    # 解析 step2 纯文本精剪剔除
-    if "step2" in all_jsons and os.path.exists(all_jsons["step2"]):
-        with open(all_jsons["step2"], "r", encoding="utf-8") as f:
-            semantics = json.load(f)
-            for s in semantics:
-                if s.get("action") == "discard":
-                    discard_intervals.append((s["start_ms"], s["end_ms"]))
+    # 1. 收集语言片段保留区间和需要挖空的废话区间
+    for clip in clips:
+        action = clip.get("action", "keep")
+        if action == "discard":
+            continue
+            
+        c_start = clip["clip_start"]
+        c_end = clip["clip_end"]
+        
+        if action in ["keep", "partial_discard"]:
+            keep_intervals.append([c_start, c_end])
+            discards = clip.get("discard_intervals", [])
+            for d in discards:
+                global_discards.append([d["start"], d["end"]])
                 
-    # 解析 step3 多模态精剪结果，支持 action 为 discard 以及 partial_discard
-    if "step3" in all_jsons and os.path.exists(all_jsons["step3"]):
-        with open(all_jsons["step3"], "r", encoding="utf-8") as f:
-            multimodal = json.load(f)
-            for m in multimodal:
-                if m.get("action") == "discard":
-                    discard_intervals.append((m["start_ms"], m["end_ms"]))
-                elif m.get("action") == "partial_discard":
-                    for interval in m.get("discard_intervals", []):
-                        rel_start_ms = int(interval.get("start", 0) * 1000)
-                        rel_end_ms = int(interval.get("end", 0) * 1000)
-                        abs_start = m["start_ms"] + rel_start_ms
-                        abs_end = m["start_ms"] + rel_end_ms
-                        abs_end = min(abs_end, m["end_ms"]) # 防止超出当前片段
-                        if abs_end > abs_start:
-                            discard_intervals.append((abs_start, abs_end))
-                    
-    # 如果没有需要剔除的，直接 copy 结束
-    if not discard_intervals:
-        print("没有需要剔除的片段，直接拷贝原视频。")
-        subprocess.run(["ffmpeg", "-y", "-i", video_path, "-c", "copy", output_video], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # 2. 收集 Omini 判定保留的非语言片段
+    for silence in silences:
+        keep_intervals.append([silence["start"], silence["end"]])
+                
+    if not keep_intervals:
+        print("没有可保留的片段！")
         return
         
-    # 合并重叠的剔除区间
-    discard_intervals.sort(key=lambda x: x[0])
-    merged_discards = []
-    for interval in discard_intervals:
-        if not merged_discards:
-            merged_discards.append(interval)
+    # 3. 区间合并 (Union)，解决 clip 之间前后缓冲导致的重叠，以及与非语言片段的重叠
+    keep_intervals.sort(key=lambda x: x[0])
+    merged_keeps = []
+    for interval in keep_intervals:
+        if not merged_keeps:
+            merged_keeps.append(interval)
         else:
-            last = merged_discards[-1]
+            last = merged_keeps[-1]
             if interval[0] <= last[1]:
-                merged_discards[-1] = (last[0], max(last[1], interval[1]))
+                merged_keeps[-1] = [last[0], max(last[1], interval[1])]
             else:
-                merged_discards.append(interval)
+                merged_keeps.append(interval)
                 
-    # 根据剔除区间计算保留区间 (有效时间)
-    # 假设视频总长度通过 ffprobe 获取（这里粗略从最后一个 discard 加上一个足够大的数，或者直接切到末尾）
-    # 为简单起见，利用保留区间生成 filter_complex
-    
-    keep_intervals = []
-    current_time = 0
-    for start_ms, end_ms in merged_discards:
-        if start_ms > current_time:
-            keep_intervals.append((current_time, start_ms))
-        current_time = end_ms
+    # 4. 从合并后的保留区间中，彻底挖去所有的 discard_intervals
+    final_keeps = []
+    for k in merged_keeps:
+        current_k = [k]
+        for d in global_discards:
+            d_start, d_end = d[0], d[1]
+            next_k = []
+            for ck in current_k:
+                ck_start, ck_end = ck[0], ck[1]
+                if d_end <= ck_start or d_start >= ck_end:
+                    next_k.append(ck)
+                else:
+                    if ck_start < d_start:
+                        next_k.append([ck_start, d_start])
+                    if d_end < ck_end:
+                        next_k.append([d_end, ck_end])
+            current_k = next_k
+        final_keeps.extend(current_k)
         
-    # 使用 ffmpeg filter_complex 合并
+    print("最终保留的时间轴区间 (ms):", final_keeps)
+    
     filter_parts = []
-    
-    # 修复末尾无语言表达内容没有去掉的 bug：
-    # 如果视频总长度比最后一句的结束时间长很多，说明后面全是没说话的废画面
-    # 我们应该截取到最后一个有意义句子的结束时间，而不是近似到末尾 999999999
-    # 首先找出所有保留片段中的最大 end_ms，然后把最后一段修正为真实的结束时间
-    max_valid_end = 0
-    if "step2" in all_jsons and os.path.exists(all_jsons["step2"]):
-        with open(all_jsons["step2"], "r", encoding="utf-8") as f:
-            semantics = json.load(f)
-            if semantics:
-                # 最后一个句子的结束时间
-                max_valid_end = semantics[-1]["end_ms"]
-    
-    # 添加最后一段
-    if current_time < max_valid_end:
-        keep_intervals.append((current_time, max_valid_end))
-    elif current_time == 0 and not discard_intervals:
-         # 没有剔除任何东西的情况
-         keep_intervals.append((0, max_valid_end if max_valid_end > 0 else 999999999))
-    
-    for i, (start_ms, end_ms) in enumerate(keep_intervals):
-        start_sec = start_ms / 1000.0
-        end_sec = end_ms / 1000.0
-        # 统一使用 trim=start=xx:end=xx 进行精确裁剪，防止把末尾没说话的废片带入
+    for i, interval in enumerate(final_keeps):
+        start_sec = interval[0] / 1000.0
+        end_sec = interval[1] / 1000.0
         filter_parts.append(f"[0:v]trim=start={start_sec}:end={end_sec},setpts=PTS-STARTPTS[v{i}];[0:a]atrim=start={start_sec}:end={end_sec},asetpts=PTS-STARTPTS[a{i}];")
-            
+        
     concat_filter = "".join(filter_parts)
-    concat_str = "".join([f"[v{i}][a{i}]" for i in range(len(keep_intervals))])
-    concat_filter += f"{concat_str}concat=n={len(keep_intervals)}:v=1:a=1[outv][outa]"
+    concat_str = "".join([f"[v{i}][a{i}]" for i in range(len(final_keeps))])
+    concat_filter += f"{concat_str}concat=n={len(final_keeps)}:v=1:a=1[outv][outa]"
     
-    print("生成合并视频...")
+    print("正在生成合并视频，请稍候...")
     cmd = [
         "ffmpeg", "-y", "-i", video_path,
         "-filter_complex", concat_filter,
@@ -565,8 +485,8 @@ def step4_merge_final(video_path, all_jsons, output_video="output/final_output.m
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"最终视频合并完成: {output_video}")
 
+
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) < 3:
         print("Usage: python clip_video.py <transcription_json> <video_path>")
         sys.exit(1)
@@ -575,20 +495,19 @@ if __name__ == "__main__":
     video_file = sys.argv[2]
     
     os.makedirs("output", exist_ok=True)
+    config = load_config()
     
-    # 步骤执行
-    step1_out = "output/step1_silence.json"
-    step2_out = "output/step2_semantic_clips.json"
-    step3_out = "output/step3_multimodal_filter.json"
+    # 步骤 1：虚拟硬切片 (仅记录元数据)
+    _, step1_out = step1_hard_slicing(trans_json)
     
-    step1_detect_silence(trans_json, step1_out)
-    step2_semantic_clip(trans_json, video_file, "output/temp_clips", step2_out)
-    step3_multimodal_filter(step2_out, video_file, step3_out)
+    # 步骤 2：LLM 文本语义分析
+    _, step2_out = step2_llm_analysis(step1_out, config)
     
-    all_jsons = {
-        "step1": step1_out,
-        "step2": step2_out,
-        "step3": step3_out
-    }
+    # 步骤 3：基于字级时间戳精细处理
+    _, step3_out = step3_precise_trimming(step2_out)
     
-    step4_merge_final(video_file, all_jsons, "output/final_output.mp4")
+    # 步骤 4：非语言片段分析（Omini 视觉判断，默认关闭）
+    _, step4_out = step4_analyze_silence(step3_out, video_file, config)
+    
+    # 步骤 5：最终合并成片
+    step5_final_merge(step3_out, step4_out, video_file, "output/final_output.mp4")

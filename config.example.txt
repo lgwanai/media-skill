@@ -28,6 +28,8 @@ OMINI_URL = https://api.xiaomimimo.com/v1
 OMINI_API_KEY = your_omini_api_key_here
 # 使用的多模态大模型名称
 OMINI_MODEL_NAME = mimo-v2-omni
+# 是否开启模拟 OpenClaw 调用（免费使用 mimo 模型），开启填 true，关闭填 false
+SIMULATE_OPENCLAW = false
 
 # ---------------------------------------------------------
 # 4. 腾讯云 COS 配置 (对象存储)
@@ -41,3 +43,4 @@ COS_SECRET_KEY = your_cos_secret_key_here
 COS_REGION = ap-beijing
 # 存储桶名称（格式为 BucketName-APPID）
 COS_BUCKET_NAME = your_bucket_name_here
+ENABLE_SILENCE_ANALYSIS = false
