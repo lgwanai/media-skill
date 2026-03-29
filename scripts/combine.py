@@ -68,25 +68,10 @@ def process_combine(video_path, target_lang=None, output_dir=None):
     return final_videos
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="提取精彩片段 -> 智能剪辑 -> 配字幕")
-    parser.add_argument("video", help="输入的原始长视频文件路径")
+    parser = argparse.ArgumentParser(description="Combine Pipeline")
+    parser.add_argument("video", help="输入的视频文件路径")
     parser.add_argument("--lang", default=None, help="目标字幕语言，如 'English', '中文'。不填则使用原视频语言。")
     parser.add_argument("--outdir", default=None, help="最终输出目录")
-    parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞")
     args = parser.parse_args()
-
-    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
-    if getattr(args, 'async_run', False) and os.environ.get('COMBINE_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        import subprocess, sys, os
-        cmd = [sys.executable] + sys.argv
-        if '--async-run' in cmd:
-            cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['COMBINE_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 combine_status.json 轮询进度。")
-        sys.exit(0)
     
     process_combine(args.video, args.lang, args.outdir)

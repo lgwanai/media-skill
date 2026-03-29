@@ -216,22 +216,7 @@ def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
     print(f"\n✅ 提取完成！最终视频保存在: {final_output}")
 
 if __name__ == "__main__":
-    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
-    if '--async-run' in sys.argv and os.environ.get('EXTRACT_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['EXTRACT_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 extract_status.json 轮询进度。")
-        sys.exit(0)
-
-    if '--async-run' in sys.argv:
-        sys.argv.remove('--async-run')
-
     if len(sys.argv) < 3:
-        print("用法: python scripts/extract_by_theme.py <音视频路径> <主题描述> [--async-run]")
+        print("用法: python scripts/extract_by_theme.py <音视频路径> <主题描述>")
         sys.exit(1)
     extract_by_theme(sys.argv[1], sys.argv[2])

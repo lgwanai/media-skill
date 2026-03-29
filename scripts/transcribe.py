@@ -224,23 +224,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Transcribe media file.")
     parser.add_argument("media_file_path", nargs="?", help="Path to the media file")
-    parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞")
     args = parser.parse_args()
-
-    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
-    if getattr(args, 'async_run', False) and os.environ.get('TRANSCRIBE_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        if '--async-run' in cmd:
-            cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['TRANSCRIBE_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 transcribe_status.json 轮询进度。")
-        sys.exit(0)
 
     if args.media_file_path:
         transcribe(args.media_file_path)
     else:
-        print("Usage: python transcribe.py <media_file_path> [--async-run]")
+        print("Usage: python transcribe.py <media_file_path>")

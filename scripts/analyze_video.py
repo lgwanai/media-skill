@@ -210,23 +210,11 @@ def analyze_video(video_path):
             json.dump({"status": "error", "message": f"调用大模型异常: {e}"}, f, ensure_ascii=False)
 
 if __name__ == "__main__":
-    if '--async-run' in sys.argv and os.environ.get('ANALYZE_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['ANALYZE_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 analyze_status.json 轮询进度。")
-        sys.exit(0)
-
-    args = [arg for arg in sys.argv[1:] if arg != '--async-run']
-    if len(args) < 1:
+    if len(sys.argv) < 2:
         print("用法: python scripts/analyze_video.py <video_path>")
         sys.exit(1)
     
-    video_path = args[0]
+    video_path = sys.argv[1]
     if not os.path.exists(video_path):
         print(f"文件不存在: {video_path}")
         sys.exit(1)

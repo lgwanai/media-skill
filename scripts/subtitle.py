@@ -415,24 +415,11 @@ def process_subtitle(video_path, target_lang=None, output_path=None):
     return output_path
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="给视频配字幕")
-    parser.add_argument("video", help="输入的视频文件路径")
-    parser.add_argument("--lang", default=None, help="目标字幕语言，如 'English', '中文'。不填则使用原视频语言。")
-    parser.add_argument("--out", default=None, help="输出的视频路径")
-    parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Media Skill 智能字幕与翻译工具")
+    parser.add_argument("video", help="输入的音视频文件路径")
+    parser.add_argument("--lang", help="目标翻译语言 (如 English)。如果不填，则仅生成原语言字幕。")
+    parser.add_argument("--out", help="输出的带字幕视频路径。如果不填，默认在统一 output 目录下生成。")
     
-    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
-    if getattr(args, 'async_run', False) and os.environ.get('SUBTITLE_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        if '--async-run' in cmd:
-            cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['SUBTITLE_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 subtitle_status.json 轮询进度。")
-        sys.exit(0)
+    args = parser.parse_args()
 
     process_subtitle(args.video, args.lang, args.out)

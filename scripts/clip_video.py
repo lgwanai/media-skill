@@ -529,21 +529,6 @@ def process_smart_clip(trans_json, video_file, output_video=None):
     return output_video
 
 if __name__ == "__main__":
-    if '--async-run' in sys.argv and os.environ.get('CLIP_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        if '--async-run' in cmd:
-            cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['CLIP_ASYNC_WORKER'] = '1'
-        
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 clip_status.json 轮询进度。")
-        sys.exit(0)
-
-    if '--async-run' in sys.argv:
-        sys.argv.remove('--async-run')
-
     if len(sys.argv) < 3:
         print("Usage: python clip_video.py <transcription_json> <video_path>")
         sys.exit(1)

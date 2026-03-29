@@ -761,7 +761,6 @@ def main():
     clone_parser.add_argument("--audio", required=True, help="参考音频文件路径")
     clone_parser.add_argument("--text", help="参考音频中的文字内容（可选，如果不填则自动使用 ASR 识别）")
     clone_parser.add_argument("--name", required=True, help="自定义音色名称（用于后续配音任务）")
-    clone_parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞")
     
     # dub 子命令
     dub_parser = subparsers.add_parser("dub", help="基于字幕文件与本地样本库生成对齐的配音文件")
@@ -775,7 +774,6 @@ def main():
     dub_parser.add_argument("--top_k", type=int, help="控制候选词范围，范围 10~50")
     dub_parser.add_argument("--top_p", type=float, help="平稳度控制，范围 0.5~0.95")
     dub_parser.add_argument("--max_text_tokens", type=int, help="单句最大长度，范围 50~150")
-    dub_parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞 (内部自动 fork 进程)")
     
     args = parser.parse_args()
     
@@ -787,21 +785,6 @@ def main():
         print("错误: 在 api 模式下，请在 config.txt 中配置有效的 SILICONFLOW_API_KEY")
         print("提示: 如果想在本地运行，请在 config.txt 中设置 INDEXTTS_MODE = local")
         sys.exit(1)
-        
-    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
-    if getattr(args, 'async_run', False) and os.environ.get('DUBBING_ASYNC_WORKER') != '1':
-        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
-        cmd = [sys.executable] + sys.argv
-        # 移除 --async-run 防止无限循环，但设置环境变量标记这是 worker
-        if '--async-run' in cmd:
-            cmd.remove('--async-run')
-        env = os.environ.copy()
-        env['DUBBING_ASYNC_WORKER'] = '1'
-        
-        # 启动后台进程并立即返回
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 status.json 轮询进度。")
-        sys.exit(0)
         
     if args.command == "clone":
         clone_voice(api_key, args.audio, args.text, args.name, mode=mode, config=config)
