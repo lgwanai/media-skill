@@ -1,6 +1,8 @@
 .venv/
 output/
 test/
+data/
+checkpoints/
 .python-version
 config.txt
 idea.md

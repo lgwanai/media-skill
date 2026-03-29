@@ -1,9 +1,13 @@
 import os
+import sys
+# 确保可以引入 scripts 目录下的其他模块
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from utils import load_config, get_file_md5, get_unified_output_dir
+
 import json
 import subprocess
 import hashlib
 from funasr import AutoModel
-import sys
 
 # 为 funasr 1.x 补充注册 ERes2Net 模型
 from funasr.register import tables
@@ -47,18 +51,6 @@ try:
     tables.register("model_classes", "iic/speech_eres2net_sv_zh-cn_16k-common")(ERes2NetAugWrapper)
 except Exception as e:
     print(f"注册 ERes2Net 模型失败，请确认 funasr 版本: {e}")
-
-# 确保可以引入 scripts 目录下的其他模块
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from utils import load_config
-
-def get_file_md5(file_path):
-    """计算文件的 MD5 摘要"""
-    hash_md5 = hashlib.md5()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
 
 def extract_audio(video_path, audio_path):
     print(f"提取音频并进行降噪处理: {video_path} -> {audio_path}")
@@ -117,24 +109,26 @@ def generate_txt(res, txt_path):
             spk = sentence.get("spk", "Unknown")
             f.write(f"[说话人{spk}]: {text}\n")
 
-def transcribe(media_path, output_dir="output"):
+def transcribe(media_path, output_dir=None):
     config = load_config()
     model_dir = config.get("MODEL_DIR", "models/")
-    os.makedirs(output_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
     print(f"计算文件 MD5: {media_path} ...")
     file_md5 = get_file_md5(media_path)
     print(f"文件 MD5: {file_md5}")
 
-    # 一个视频解析到一个独立目录中，以便管理和复用
-    base_name = os.path.splitext(os.path.basename(media_path))[0]
-    specific_output_dir = os.path.join(output_dir, f"{base_name}_{file_md5[:8]}")
-    os.makedirs(specific_output_dir, exist_ok=True)
+    # 获取统一输出目录
+    specific_output_dir = get_unified_output_dir(media_path, config)
 
     json_path = os.path.join(specific_output_dir, "transcription.json")
     srt_path = os.path.join(specific_output_dir, "transcription.srt")
     txt_path = os.path.join(specific_output_dir, "transcription.txt")
+    status_path = os.path.join(specific_output_dir, "transcribe_status.json")
+
+    # 写入初始状态
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 10}, f, ensure_ascii=False)
 
     # 检查是否已经解析过（MD5 匹配）
     if os.path.exists(json_path):
@@ -146,6 +140,8 @@ def transcribe(media_path, output_dir="output"):
                 saved_md5 = saved_data[0].get("file_md5", "")
                 if saved_md5 == file_md5:
                     print(f"✅ 发现已存在的解析记录且 MD5 匹配，跳过大模型调用！直接使用: {specific_output_dir}")
+                    with open(status_path, "w", encoding="utf-8") as f:
+                        json.dump({"status": "done", "progress_percent": 100}, f, ensure_ascii=False)
                     return saved_data
         except Exception as e:
             print(f"读取历史解析结果失败，将重新解析: {e}")
@@ -155,8 +151,13 @@ def transcribe(media_path, output_dir="output"):
     # 这样可以支持广泛的视频 (mp4, mkv, avi, mov) 和音频 (mp3, wav, aac, m4a, flac) 格式
     if media_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma")):
         audio_path = os.path.join(specific_output_dir, "temp_audio.wav")
-        extract_audio(media_path, audio_path)
+        if not os.path.exists(audio_path):
+            extract_audio(media_path, audio_path)
+        else:
+            print(f"✅ 发现已提取的音频文件，跳过音频提取: {audio_path}")
 
+    # 为了让 FunASR (ModelScope) 统一使用我们指定的目录
+    
     print("加载 FunASR 模型...")
     # Initialize the model pipeline (Paraformer-large + VAD + PUNC + ERes2Net)
     model = AutoModel(
@@ -192,18 +193,54 @@ def transcribe(media_path, output_dir="output"):
             res.append({"file_md5": file_md5, "sentence_info": []})
 
     # Save JSON with timestamps
+    import sys
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from vocab_utils import load_vocab, apply_vocab_to_result
+    
+    vocab_path = os.path.join("data", "hotwords.yaml")
+    vocab = load_vocab(vocab_path)
+    if vocab:
+        print(f"应用专业词库 ({len(vocab)} 个映射规则)...")
+        res = apply_vocab_to_result(res, vocab)
+        
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)
-        
+
+    # Generate output files
     generate_srt(res, srt_path)
     generate_txt(res, txt_path)
 
-    print(f"识别完成，结果已保存至: \n - {json_path}\n - {srt_path}\n - {txt_path}")
+    print(f"解析完成！输出目录: {specific_output_dir}")
+    
+    # 写入完成状态
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "done", "progress_percent": 100}, f, ensure_ascii=False)
+        
     return res
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1:
-        transcribe(sys.argv[1])
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Transcribe media file.")
+    parser.add_argument("media_file_path", nargs="?", help="Path to the media file")
+    parser.add_argument("--async-run", action="store_true", help="是否在后台异步执行以避免阻塞")
+    args = parser.parse_args()
+
+    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
+    if getattr(args, 'async_run', False) and os.environ.get('TRANSCRIBE_ASYNC_WORKER') != '1':
+        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
+        cmd = [sys.executable] + sys.argv
+        if '--async-run' in cmd:
+            cmd.remove('--async-run')
+        env = os.environ.copy()
+        env['TRANSCRIBE_ASYNC_WORKER'] = '1'
+        
+        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 transcribe_status.json 轮询进度。")
+        sys.exit(0)
+
+    if args.media_file_path:
+        transcribe(args.media_file_path)
     else:
-        print("Usage: python transcribe.py <media_file_path>")
+        print("Usage: python transcribe.py <media_file_path> [--async-run]")

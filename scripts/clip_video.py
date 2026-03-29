@@ -5,7 +5,7 @@ import re
 import sys
 import base64
 
-from utils import load_config, get_openclaw_headers, create_openai_client
+from utils import load_config, get_openclaw_headers, create_openai_client, get_unified_output_dir
 from cos_client import COSClient
 
 def get_video_duration(video_path):
@@ -87,13 +87,13 @@ def step1_hard_slicing(transcription_json_path, temp_dir="output/temp_clips"):
             "timestamp_array": sentence.get("timestamp", [])
         })
         
-    output_json = "output/step1_clips.json"
+    output_json = os.path.join(temp_dir, "step1_clips.json")
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(clips, f, ensure_ascii=False, indent=2)
         
     return clips, output_json
 
-def step2_llm_analysis(clips_json_path, config):
+def step2_llm_analysis(clips_json_path, config, temp_dir):
     """
     第二步：语言大模型分析语义
     """
@@ -177,7 +177,7 @@ def step2_llm_analysis(clips_json_path, config):
             if "action" not in clip:
                 clip["action"] = "keep"
 
-    output_json = "output/step2_clips.json"
+    output_json = os.path.join(temp_dir, "step2_clips.json")
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(clips, f, ensure_ascii=False, indent=2)
         
@@ -220,7 +220,7 @@ def get_timestamp_for_substring(text, substring, timestamps):
         }
     return None
 
-def step3_precise_trimming(clips_json_path):
+def step3_precise_trimming(clips_json_path, temp_dir):
     """
     第三步：精确提取剔除时间戳
     将标记为 partial_discard 的片段，通过 FunASR 提供的字符级/词级时间戳，
@@ -264,7 +264,7 @@ def step3_precise_trimming(clips_json_path):
                 else:
                     print(f"警告：未能在原文 '{combined_text}' 中精确匹配到 '{discard_text}'")
                     
-    output_json = "output/step3_clips.json"
+    output_json = os.path.join(temp_dir, "step3_clips.json")
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(clips, f, ensure_ascii=False, indent=2)
         
@@ -285,7 +285,7 @@ def step4_analyze_silence(clips_json_path, video_path, config, temp_dir="output/
     rescued_silences = []
     
     if not enable_silence_analysis:
-        output_json = "output/step4_silences.json"
+        output_json = os.path.join(temp_dir, "step4_silences.json")
         with open(output_json, "w", encoding="utf-8") as f:
             json.dump(rescued_silences, f, ensure_ascii=False, indent=2)
         return rescued_silences, output_json
@@ -294,7 +294,7 @@ def step4_analyze_silence(clips_json_path, video_path, config, temp_dir="output/
         video_duration = get_video_duration(video_path)
     except Exception as e:
         print(f"获取视频长度失败，跳过非语言片段分析: {e}")
-        return [], "output/step4_silences.json"
+        return [], os.path.join(temp_dir, "step4_silences.json")
         
     # 收集所有的有效语言片段（包含 keep 和 partial_discard 的硬切片区间，去除完全 discard 的片段）
     speech_intervals = []
@@ -386,7 +386,7 @@ def step4_analyze_silence(clips_json_path, video_path, config, temp_dir="output/
                 except Exception as e:
                     print(f"调用 Omini 模型发生异常: {e}")
                     
-    output_json = "output/step4_silences.json"
+    output_json = os.path.join(temp_dir, "step4_silences.json")
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(rescued_silences, f, ensure_ascii=False, indent=2)
         
@@ -486,7 +486,64 @@ def step5_final_merge(clips_json_path, silences_json_path, video_path, output_vi
     print(f"最终视频合并完成: {output_video}")
 
 
+def process_smart_clip(trans_json, video_file, output_video=None):
+    config = load_config()
+    output_dir = get_unified_output_dir(video_file, config)
+    
+    status_path = os.path.join(output_dir, "clip_status.json")
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 10, "message": "正在进行虚拟硬切片..."}, f, ensure_ascii=False)
+        
+    if not output_video:
+        base_name = os.path.basename(video_file)
+        name_without_ext, ext = os.path.splitext(base_name)
+        output_video = os.path.join(output_dir, f"{name_without_ext}_clipped{ext}")
+
+    # 步骤 1：虚拟硬切片 (仅元数据)
+    _, step1_out = step1_hard_slicing(trans_json, temp_dir=output_dir)
+    
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 30, "message": "正在进行大模型语义分析..."}, f, ensure_ascii=False)
+
+    # 步骤 2：大模型语义分析
+    _, step2_out = step2_llm_analysis(step1_out, config, temp_dir=output_dir)
+    
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 60, "message": "正在进行字级时间戳精细对齐..."}, f, ensure_ascii=False)
+
+    # 步骤 3：基于字级时间戳精细处理
+    _, step3_out = step3_precise_trimming(step2_out, temp_dir=output_dir)
+    
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 80, "message": "正在进行非语言片段分析及合并..."}, f, ensure_ascii=False)
+
+    # 步骤 4：非语言片段分析（Omini 视觉判断，默认关闭）
+    _, step4_out = step4_analyze_silence(step3_out, video_file, config, temp_dir=output_dir)
+    
+    # 步骤 5：最终合并成片
+    step5_final_merge(step3_out, step4_out, video_file, output_video)
+    
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "done", "progress_percent": 100, "output_path": output_video}, f, ensure_ascii=False)
+        
+    return output_video
+
 if __name__ == "__main__":
+    if '--async-run' in sys.argv and os.environ.get('CLIP_ASYNC_WORKER') != '1':
+        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
+        cmd = [sys.executable] + sys.argv
+        if '--async-run' in cmd:
+            cmd.remove('--async-run')
+        env = os.environ.copy()
+        env['CLIP_ASYNC_WORKER'] = '1'
+        
+        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 clip_status.json 轮询进度。")
+        sys.exit(0)
+
+    if '--async-run' in sys.argv:
+        sys.argv.remove('--async-run')
+
     if len(sys.argv) < 3:
         print("Usage: python clip_video.py <transcription_json> <video_path>")
         sys.exit(1)
@@ -494,20 +551,4 @@ if __name__ == "__main__":
     trans_json = sys.argv[1]
     video_file = sys.argv[2]
     
-    os.makedirs("output", exist_ok=True)
-    config = load_config()
-    
-    # 步骤 1：虚拟硬切片 (仅记录元数据)
-    _, step1_out = step1_hard_slicing(trans_json)
-    
-    # 步骤 2：LLM 文本语义分析
-    _, step2_out = step2_llm_analysis(step1_out, config)
-    
-    # 步骤 3：基于字级时间戳精细处理
-    _, step3_out = step3_precise_trimming(step2_out)
-    
-    # 步骤 4：非语言片段分析（Omini 视觉判断，默认关闭）
-    _, step4_out = step4_analyze_silence(step3_out, video_file, config)
-    
-    # 步骤 5：最终合并成片
-    step5_final_merge(step3_out, step4_out, video_file, "output/final_output.mp4")
+    process_smart_clip(trans_json, video_file)

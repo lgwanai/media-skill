@@ -11,18 +11,29 @@ from scripts.utils import load_config, get_openclaw_headers, create_openai_clien
 
 def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
     os.makedirs(output_dir, exist_ok=True)
+    status_path = os.path.join(output_dir, "extract_status.json")
     
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 5, "message": "正在转录字幕..."}, f, ensure_ascii=False)
+        
     # 1. 毫秒级转字幕
     print(">>> 步骤 1：毫秒级转字幕...")
     res = transcribe(media_path, output_dir)
     if not res or not isinstance(res, list) or len(res) == 0:
         print("未能提取到字幕信息。")
+        with open(status_path, "w", encoding="utf-8") as f:
+            json.dump({"status": "error", "message": "未能提取到字幕信息"}, f, ensure_ascii=False)
         return
     sentences = res[0].get("sentence_info", [])
     
     if not sentences:
         print("未能提取到字幕信息。")
+        with open(status_path, "w", encoding="utf-8") as f:
+            json.dump({"status": "error", "message": "未能提取到字幕信息"}, f, ensure_ascii=False)
         return
+
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "running", "progress_percent": 30, "message": "正在优化主题描述..."}, f, ensure_ascii=False)
 
     # 2. LLM 分析提取
     print("\n>>> 步骤 2：优化主题描述...")
@@ -199,10 +210,28 @@ def extract_by_theme(media_path, theme, output_dir="output/theme_extract"):
     print("正在合并最终视频...")
     subprocess.run(concat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"status": "done", "progress_percent": 100, "output_path": final_output}, f, ensure_ascii=False)
+        
     print(f"\n✅ 提取完成！最终视频保存在: {final_output}")
 
 if __name__ == "__main__":
+    # 如果指定了异步运行，并且当前不是子进程，则启动子进程并在主进程立即退出
+    if '--async-run' in sys.argv and os.environ.get('EXTRACT_ASYNC_WORKER') != '1':
+        print(">> 检测到 --async-run 参数，正在将任务转入后台异步执行...")
+        cmd = [sys.executable] + sys.argv
+        cmd.remove('--async-run')
+        env = os.environ.copy()
+        env['EXTRACT_ASYNC_WORKER'] = '1'
+        
+        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        print(">> 后台任务已启动！Agent 可以立即退出等待，不被阻塞。请通过 extract_status.json 轮询进度。")
+        sys.exit(0)
+
+    if '--async-run' in sys.argv:
+        sys.argv.remove('--async-run')
+
     if len(sys.argv) < 3:
-        print("用法: python scripts/extract_by_theme.py <音视频路径> <主题描述>")
+        print("用法: python scripts/extract_by_theme.py <音视频路径> <主题描述> [--async-run]")
         sys.exit(1)
     extract_by_theme(sys.argv[1], sys.argv[2])

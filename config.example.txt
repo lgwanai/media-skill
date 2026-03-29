@@ -44,3 +44,17 @@ COS_REGION = ap-beijing
 # 存储桶名称（格式为 BucketName-APPID）
 COS_BUCKET_NAME = your_bucket_name_here
 ENABLE_SILENCE_ANALYSIS = false
+
+# ---------------------------------------------------------
+# 5. IndexTTS-2 配置 (用于 TTS 配音与声音克隆)
+# ---------------------------------------------------------
+# 运行模式：'api' (使用 SiliconFlow 云端接口) 或 'local' (本地推理)
+INDEXTTS_MODE = local
+# 如果使用 api 模式，请填写 SiliconFlow API Key
+SILICONFLOW_API_KEY = your_siliconflow_api_key_here
+
+# 配音基准情绪参数（当大模型未返回或未手动指定时使用的默认值）
+TTS_DEFAULT_TEMPERATURE = 0.65
+TTS_DEFAULT_TOP_K = 40
+TTS_DEFAULT_TOP_P = 0.8
+TTS_DEFAULT_MAX_TEXT_TOKENS = 130

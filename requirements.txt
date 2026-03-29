@@ -3,3 +3,4 @@ modelscope==1.14.0
 torch>=1.13.0
 torchaudio>=0.13.0
 pydub==0.25.1
+requests>=2.25.1
