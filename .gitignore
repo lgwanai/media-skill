@@ -9,3 +9,7 @@ idea.md
 dist/
 package.sh
 RELEASE_NOTE.md
+
+__pycache__/
+*.py[cod]
+*.class
