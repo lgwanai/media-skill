@@ -33,6 +33,14 @@ def load_config(config_path="config.txt"):
         # 展开配置中的 ~ 符号
         config["MODEL_DIR"] = os.path.expanduser(config["MODEL_DIR"])
         
+    # TTS 默认值处理
+    if "TTS_ENGINE" not in config:
+        config["TTS_ENGINE"] = "indextts"
+    if "INDEXTTS_MODE" not in config:
+        config["INDEXTTS_MODE"] = "api"
+    if "QWEN3TTS_MODE" not in config:
+        config["QWEN3TTS_MODE"] = "api"
+        
     return config
 
 def get_file_md5(file_path):

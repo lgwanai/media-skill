@@ -30,16 +30,16 @@ def split_text_into_paragraphs_and_sentences(text, max_len=150):
     return [[p] for p in paragraphs]
 
 def synthesize_worker(args):
-    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir = args
+    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir, engine, config = args
     temp_audio_path = os.path.join(temp_dir, f"chunk_{idx}.mp3")
     print(f"[{idx}] 正在合成: {text[:20]}...")
-    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params)
+    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config)
     if success:
         return idx, temp_audio_path
     else:
         return idx, None
 
-def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model="IndexTeam/IndexTTS-2", tts_params=None):
+def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model=None, tts_params=None, engine="indextts", config=None):
     print("正在对长文本进行拆分...")
     paragraphs = split_text_into_paragraphs_and_sentences(text)
     
@@ -97,7 +97,7 @@ def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model="Inde
     
     tasks = []
     for chunk in flat_chunks:
-        tasks.append((chunk["idx"], chunk["text"], api_key, voice_id, mode, model, tts_params, temp_dir))
+        tasks.append((chunk["idx"], chunk["text"], api_key, voice_id, mode, model, tts_params, temp_dir, engine, config))
         
     results = {}
     completed_count = 0
@@ -187,7 +187,7 @@ def analyze_text_for_tts_params(text, config, tts_params_override=None):
 1. **必须加入大量口语化语气词**（如：哈、啊、呢、哎、啦、哦等），让生硬的文字变得像日常聊天一样自然。
 2. 遇到长句时，不要随意切断成很多小句，**保持原有的段落结构**，只在合适的地方加入逗号或微小的停顿。
 3. 整体风格要像一个人在镜头前自然地聊天或演讲，绝对不能有“机器读稿感”或“书面宣读感”。
-4. **重要**：如果文本中自带了副语言标签（如 `[laughter]`, `[breath]`, `[sigh]`, `[cough]`, `[cry]`, `[pause]` 等），请**原样保留它们**，但**绝对不要自己主动添加任何新的标签**。
+4. **重要**：如果用户传入的文本中自带了情绪标签（如 `[惊讶:1.2]`, `[高兴:0.8]` 等），请**原样保留它们**在原本的位置。但是，**你绝对不能自己主动添加任何新的标签**。你的任务只是润色文字，禁止无中生有地添加任何 `[xxx]` 或 `[xxx:x.x]` 格式的内容。
 5. 请将修改后带有浓厚口语化风格的文本，放在 JSON 的 `refined_text` 字段中。**必须保证段落结构不变（原先有几段，修改后仍是几段）**。
 
 当前系统配置的基准配音参数为：
@@ -409,10 +409,10 @@ def migrate_old_voices_json():
         except Exception as e:
             print(f"迁移旧版 voices.json 失败: {e}")
 
-def clone_voice(api_key, audio_path, text, voice_name, mode="api", model="IndexTeam/IndexTTS-2", config=None):
+def clone_voice(api_key, ref_audio_path, text, voice_name, mode="api", model=None, config=None, engine="indextts"):
+    if not config:
+        config = load_config()
     if not text:
-        if not config:
-            config = {}
         text = auto_transcribe_audio(audio_path, config)
         if not text:
             print("自动识别文本为空，无法进行克隆。")
@@ -438,9 +438,23 @@ def clone_voice(api_key, audio_path, text, voice_name, mode="api", model="IndexT
         "text": text,
         "mode": mode,
         "original_audio": audio_path,
-        "local_audio": ref_audio_path
+        "local_audio": ref_audio_path,
+        "engine": engine
     }
             
+    if engine == "qwen3-tts":
+        print(f"正在配置 Qwen3-TTS 声音样本进行克隆: {ref_audio_path}")
+        # Qwen3-TTS 无论是 local 还是 api，都只需要保存音频和文本
+        # 它支持 zero-shot 推理，无需提前提取特征
+        with open(os.path.join(voice_path, "meta.json"), "w", encoding="utf-8") as vf:
+            json.dump(meta, vf, ensure_ascii=False, indent=2)
+            
+        print(f"音色已保存到本地样本库目录 {voice_path} (Qwen3-TTS)")
+        return "qwen:" + ref_audio_path
+
+    if not model:
+        model = config.get("INDEXTTS_MODEL_NAME", "IndexTeam/IndexTTS-2")
+        
     if mode == "local":
         print(f"正在配置本地声音样本进行克隆: {ref_audio_path}")
         
@@ -473,7 +487,8 @@ def clone_voice(api_key, audio_path, text, voice_name, mode="api", model="IndexT
         return "local:" + ref_audio_path
 
     print(f"正在上传声音样本进行克隆: {ref_audio_path}")
-    url = "https://api.siliconflow.cn/v1/uploads/audio/voice"
+    # 硅基流动平台的 URL 可以通过配置指定，默认值为其公有云接口
+    url = config.get("INDEXTTS_URL", "https://api.siliconflow.cn/v1/audio/speech").replace("/audio/speech", "/uploads/audio/voice")
     headers = {
         "Authorization": f"Bearer {api_key}"
     }
@@ -506,6 +521,159 @@ import threading
 _local_tts_model = None
 _tts_model_lock = threading.Lock()
 _tts_infer_lock = threading.Lock()
+
+# ==================== Qwen3-TTS 逻辑 ====================
+
+qwen_tts_model_cache = None
+
+def get_qwen3tts_model(model_path="Qwen/Qwen3-TTS-12Hz-0.6B-Base"):
+    global qwen_tts_model_cache
+    if qwen_tts_model_cache is not None:
+        return qwen_tts_model_cache
+        
+    print(f"正在加载 Qwen3-TTS 模型 ({model_path})...")
+    try:
+        from qwen_tts import Qwen3TTSModel
+        import torch
+        device = "cuda:0" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+        qwen_tts_model_cache = Qwen3TTSModel.from_pretrained(
+            model_path,
+            device_map=device,
+            dtype=torch.bfloat16 if device != "cpu" else torch.float32,
+        )
+        print("Qwen3-TTS 模型加载成功！")
+        return qwen_tts_model_cache
+    except Exception as e:
+        print(f"加载 Qwen3-TTS 模型失败: {e}")
+        return None
+
+def synthesize_speech_qwen3tts(api_key, text, voice_id, output_path, mode="api", model=None, tts_params=None, parsed_tags=None, config=None):
+    if not config:
+        config = load_config()
+    
+    if not model:
+        model = config.get("QWEN3TTS_MODEL_NAME", "qwen3-tts")
+    if not text.strip():
+        print("文本为空，跳过 Qwen3-TTS 合成")
+        return False
+        
+    # 获取音色信息
+    ref_audio = None
+    ref_text = None
+    
+    if voice_id.startswith("qwen:"):
+        ref_audio = voice_id[5:]
+        voices_dir = get_voices_dir()
+        for vname in os.listdir(voices_dir):
+            vpath = os.path.join(voices_dir, vname)
+            meta_path = os.path.join(vpath, "meta.json")
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if meta.get("local_audio") == ref_audio:
+                    ref_text = meta.get("text")
+                    break
+    else:
+        # 如果不是自定义音色，处理内置音色
+        pass
+        
+    if mode == "local":
+        model_path = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+        qwen_model = get_qwen3tts_model(model_path)
+        if not qwen_model:
+            return False
+            
+        try:
+            import soundfile as sf
+            with _tts_infer_lock: # 复用全局锁
+                if ref_audio and ref_text:
+                    wavs, sr = qwen_model.generate_voice_clone(
+                        text=text,
+                        language="Chinese",
+                        ref_audio=ref_audio,
+                        ref_text=ref_text,
+                    )
+                else:
+                    # 基础合成，使用预设的音色或不提供参考
+                    # 待补充，这里简单调用
+                    wavs, sr = qwen_model.generate_custom_voice(
+                        text=text,
+                        language="Chinese"
+                    )
+            sf.write(output_path, wavs[0], sr)
+            print(f"Qwen3-TTS (Local) 语音合成成功，保存到 {output_path}")
+            return True
+        except Exception as e:
+            print(f"Qwen3-TTS (Local) 语音合成失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+            
+    elif mode == "api":
+        try:
+            import dashscope
+            dashscope.api_key = api_key or (config.get("QWEN3TTS_API_KEY", "") if config else "")
+            
+            # 使用配置中的 base_url（如果存在且有效）
+            base_url = config.get("QWEN3TTS_URL", "") if config else ""
+            if base_url:
+                dashscope.base_http_api_url = base_url
+                
+            # 使用 MultiModalConversation 接口进行合成和克隆
+            print(f"调用 DashScope {model} 接口...")
+            
+            messages = []
+            if ref_audio and ref_text:
+                # 构造克隆模式的 messages
+                ref_audio_uri = f"file://{ref_audio}" if not ref_audio.startswith(("http", "file://")) else ref_audio
+                messages = [{
+                    "role": "user",
+                    "content": [
+                        {"audio": ref_audio_uri},
+                        {"text": f"<|ref_audio|>\n<|text|>{ref_text}\n<|gen_text|>{text}"}
+                    ]
+                }]
+            else:
+                # 基础合成模式
+                # 如果没有 voice 参数，这里默认传一个系统音色或仅传文本
+                # 为了兼容性，如果没有配置，我们可以尝试仅传文本
+                messages = [{
+                    "role": "user",
+                    "content": [
+                        {"text": f"<|gen_text|>{text}"}
+                    ]
+                }]
+
+            response = dashscope.MultiModalConversation.call(
+                model=model if model != "qwen3-tts" else "qwen3-tts-flash",
+                messages=messages,
+                language_type="Chinese",
+            )
+            
+            if response.status_code == 200:
+                # 处理返回的音频
+                # response.output.audio 可能是字节流或者包含在 response 中
+                if hasattr(response, 'output') and hasattr(response.output, 'audio') and response.output.audio is not None:
+                    # 某些版本可能返回 base64 或直接提供二进制数据
+                    audio_data = response.output.audio.data if hasattr(response.output.audio, 'data') else response.output.audio
+                    with open(output_path, 'wb') as f:
+                        f.write(audio_data)
+                    print(f"Qwen3-TTS (API) 语音合成成功，保存到 {output_path}")
+                    return True
+                else:
+                    # 回退到基础 TTS
+                    print("Qwen3-TTS API 返回格式不支持，尝试回退基础合成...")
+                    # ... 如果需要
+                    
+            print(f"Qwen3-TTS (API) 失败: {response}")
+            return False
+        except Exception as e:
+            print(f"Qwen3-TTS (API) 调用异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+# ========================================================
 
 def get_local_tts_model():
     global _local_tts_model
@@ -638,25 +806,54 @@ def synthesize_speech_local(text, voice_audio, output_path, tts_params=None):
             print(f"本地合成失败 (v2): {e}")
             return False
 
-def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model="IndexTeam/IndexTTS-2", tts_params=None):
-    # --- \u589e\u52a0\uff1a\u5904\u7406\u526f\u8bed\u8a00\u6807\u7b7e\uff08Paralinguistic tags\uff09 ---
-    # IndexTTS-2 \u539f\u751f\u4e0d\u652f\u6301 [laughter] \u7b49\u7c7b\u4f3c ChatTTS \u7684\u7279\u6b8a token\uff0c
-    # \u5982\u679c\u4e0d\u5904\u7406\uff0c\u5b83\u4f1a\u76f4\u63a5\u8bfb\u51fa "\u4e2d\u62ec\u53f7 laughter \u53f3\u4e2d\u62ec\u53f7" \u6216\u8005 "L-A-U-G-H-T-E-R"\u3002
-    # \u6211\u4eec\u5c06\u5b83\u4eec\u6620\u5c04\u4e3a\u80fd\u591f\u89e6\u53d1\u7c7b\u4f3c\u58f0\u97f3\u7684\u81ea\u7136\u4e2d\u6587\u8bcd\u6c47\u6216\u505c\u987f\u3002
-    paralinguistic_mapping = {
-        "[laughter]": "\u54c8\u54c8",
-        "[laugh]": "\u54c8\u54c8",
-        "[breath]": "\u2026\u2026", # \u7528\u7701\u7565\u53f7\u8868\u793a\u547c\u5438\u505c\u987f
-        "[sigh]": "\u5509",
-        "[cough]": "\u54b3\u54b3",
-        "[cry]": "\u545c\u545c",
-        "[smack]": "\u5427\u5527",
-        "[uv_break]": "\u2026\u2026",
-        "[pause]": "\u2026\u2026"
-    }
-    for tag, replacement in paralinguistic_mapping.items():
-        text = text.replace(tag, replacement)
-    # ------------------------------------------------
+def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model=None, tts_params=None, engine="indextts", config=None):
+    if not config:
+        config = load_config()
+    print(f"[{mode}模式] 正在调用 {engine} 进行语音合成...")
+    if tts_params is None:
+        tts_params = {}
+    else:
+        tts_params = tts_params.copy()
+        
+    # --- 解析并移除情绪标签（如 [惊讶:1.2]），转换为 IndexTTS emo_vector ---
+    emotion_tags = ["高兴", "愤怒", "悲伤", "恐惧", "反感", "低落", "惊讶", "自然"]
+    import re
+    matches = re.finditer(r'\[([^\]:]+):([\d.]+)\]', text)
+    emo_vector = None
+    parsed_tags = []
+    for match in matches:
+        emo_name = match.group(1)
+        if emo_name in emotion_tags:
+            try:
+                emo_val = float(match.group(2))
+                emo_vector = [0.0] * 8
+                emo_index = emotion_tags.index(emo_name)
+                emo_vector[emo_index] = emo_val
+                parsed_tags.append({"type": "emotion", "name": emo_name, "intensity": emo_val})
+                print(f"    -> 成功解析情绪标签: {emo_name} (强度: {emo_val})")
+            except ValueError:
+                pass
+    if emo_vector:
+        tts_params["emo_vector"] = emo_vector
+        
+    # 将所有的情绪标签（无论是否支持）都从文本中移除，避免被当做文字读出来
+    clean_text = re.sub(r'\[([^\]:]+):([\d.]+)\]', '', text).strip()
+
+    # 移除原本对副语言标签（如 [laughter] 等）的映射支持，因为模型无法生成逼真效果。
+    # 我们直接通过正则将可能残留的副语言标签彻底删除，避免读出来。
+    clean_text = re.sub(r'\[(?:laughter|laugh|breath|sigh|cough|cry|smack|uv_break|pause)\]', '', clean_text, flags=re.IGNORECASE)
+    
+    # 进一步兜底，移除所有未被识别的方括号内容，防止作为文本读出
+    clean_text = re.sub(r'\[[^\]]+\]', '', clean_text).strip()
+
+    if engine == "qwen3-tts":
+        return synthesize_speech_qwen3tts(api_key, clean_text, voice_id, output_path, mode, model, tts_params, parsed_tags, config)
+        
+    if not model:
+        model = config.get("INDEXTTS_MODEL_NAME", "IndexTeam/IndexTTS-2")
+        
+    # 保持向后兼容的 text 变量覆盖
+    text = clean_text
 
     if mode == "local":
         # local 模式下，voice_id 实际上是本地音频的路径
@@ -674,38 +871,40 @@ def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model="I
             return False
         return synthesize_speech_local(text, local_audio_path, output_path, tts_params)
         
-    url = "https://api.siliconflow.cn/v1/audio/speech"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": model,
-        "input": text,
-        "voice": voice_id,
-        "response_format": "mp3",
-        "sample_rate": 32000,
-        "stream": False,
-        "speed": 1.0,
-        "gain": 0.0
-    }
-    response = requests.post(url, headers=headers, json=data)
-    if response.status_code == 200:
-        with open(output_path, "wb") as f:
-            f.write(response.content)
-        return True
-    else:
-        print(f"语音合成失败: {response.status_code} {response.text}")
-        return False
+    if engine == "indextts":
+        url = config.get("INDEXTTS_URL", "https://api.siliconflow.cn/v1/audio/speech")
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": model,
+            "input": text,
+            "voice": voice_id,
+            "response_format": "mp3",
+            "sample_rate": 32000,
+            "stream": False,
+            "speed": 1.0,
+            "gain": 0.0
+        }
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+            return True
+        else:
+            print(f"语音合成失败: {response.status_code} {response.text}")
+            return False
 
-def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api", model="IndexTeam/IndexTTS-2", tts_params=None):
+def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api", model=None, tts_params=None, engine="indextts", config=None):
     print(f"解析字幕文件: {srt_path}")
     subs = parse_srt(srt_path)
     if not subs:
         print("未找到有效的字幕片段！")
         return
         
-    config = load_config()
+    if not config:
+        config = load_config()
     output_dir = get_unified_output_dir(srt_path, config)
     
     if not output_audio_path:
@@ -732,7 +931,7 @@ def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api"
         temp_audio_path = os.path.join(temp_dir, f"sub_{sub['index']}.mp3")
         
         # 合成语音
-        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params)
+        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config)
         if success:
             # 读取合成的音频
             seg_audio = AudioSegment.from_file(temp_audio_path)
@@ -778,16 +977,26 @@ def main():
     args = parser.parse_args()
     
     config = load_config()
-    api_key = config.get("SILICONFLOW_API_KEY", "")
-    mode = config.get("INDEXTTS_MODE", "api").strip().lower()
     
-    if mode == "api" and (not api_key or api_key == "your_siliconflow_api_key_here"):
-        print("错误: 在 api 模式下，请在 config.txt 中配置有效的 SILICONFLOW_API_KEY")
-        print("提示: 如果想在本地运行，请在 config.txt 中设置 INDEXTTS_MODE = local")
-        sys.exit(1)
+    # 动态确定引擎和模式
+    engine = config.get("TTS_ENGINE", "indextts").strip().lower()
+    
+    if engine == "qwen3-tts":
+        mode = config.get("QWEN3TTS_MODE", "api").strip().lower()
+        api_key = config.get("QWEN3TTS_API_KEY", "")
+        if mode == "api" and not api_key:
+            print("错误: 在 api 模式下使用 Qwen3-TTS，请在 config.txt 中配置有效的 QWEN3TTS_API_KEY")
+            sys.exit(1)
+    else:
+        mode = config.get("INDEXTTS_MODE", "api").strip().lower()
+        api_key = config.get("INDEXTTS_API_KEY", "")
+        if mode == "api" and (not api_key or api_key == "your_indextts_api_key_here"):
+            print("错误: 在 api 模式下使用 IndexTTS，请在 config.txt 中配置有效的 INDEXTTS_API_KEY")
+            print("提示: 如果想在本地运行，请在 config.txt 中设置 INDEXTTS_MODE = local")
+            sys.exit(1)
         
     if args.command == "clone":
-        clone_voice(api_key, args.audio, args.text, args.name, mode=mode, config=config)
+        clone_voice(api_key, args.audio, args.text, args.name, mode=mode, config=config, engine=engine)
     elif args.command == "dub":
         if not args.srt and not args.text and not args.text_file:
             print("错误: 必须提供 --srt、--text 或 --text-file 其中之一")
@@ -842,7 +1051,15 @@ def main():
         voice_id = args.voice
         voices = get_saved_voices()
         if args.voice in voices:
-            if mode == "local":
+            v_engine = voices[args.voice].get("engine", "indextts")
+            # 如果样本的引擎与当前配置不符，给出警告，但尝试兼容
+            if v_engine != engine:
+                print(f"警告: 音色样本 {args.voice} 是由 {v_engine} 创建的，当前配置引擎为 {engine}，可能会有兼容性问题。")
+                
+            if v_engine == "qwen3-tts":
+                voice_id = "qwen:" + voices[args.voice].get("local_audio")
+                print(f"使用 Qwen3-TTS 本地库音色 {args.voice} -> {voice_id}")
+            elif mode == "local":
                 # 本地模式需要获取本地音频路径
                 voice_id = voices[args.voice].get("local_audio")
                 if not voice_id:
@@ -854,9 +1071,9 @@ def main():
                 print(f"使用本地库音色 {args.voice} -> {voice_id}")
                         
         if args.srt:
-            dub_subtitle(api_key, args.srt, voice_id, args.out, mode=mode, tts_params=tts_params)
+            dub_subtitle(api_key, args.srt, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config)
         elif args.text:
-            dub_text(api_key, args.text, voice_id, args.out, mode=mode, tts_params=tts_params)
+            dub_text(api_key, args.text, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config)
     else:
         parser.print_help()
 
