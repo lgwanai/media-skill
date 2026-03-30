@@ -233,6 +233,14 @@ python scripts/analyze_video.py <待分析视频.mp4>
 ```
 *系统会自动将其压缩为 540p 节省 Token，并输出一份极其专业的 Markdown 深度分析报告。*
 
+#### 📽️ 魔法 L: PPT 翻页视频生成
+输入一系列场景的“图片+文字”，系统会自动将文字进行 AI 配音，并与图片合并生成每一段带字幕的视频，最后无缝拼接为一个完整的 PPT 讲解视频。
+```bash
+# 准备一个 scenes.json，格式为 [{"image_url": "...", "text": "第一段文字"}, ...]
+python scripts/ppt_video.py --scenes scenes.json --voice default
+```
+*完成后，会在 `output/` 中得到 `ppt_final_video.mp4`，包含全部配音、画面和精美字幕。*
+
 ---
 
 ## ❓ 常见问题 (FAQ)
