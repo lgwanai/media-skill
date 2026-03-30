@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--scenes", required=True, help="Path to JSON file containing scenes list")
     parser.add_argument("--voice", default="default", help="Voice to use for dubbing")
     parser.add_argument("--out", default="output/ppt_final_video.mp4", help="Output final video path")
+    parser.add_argument("--temperature", default="0.1", help="Temperature for TTS emotion fluctuation")
     args = parser.parse_args()
 
     with open(args.scenes, 'r', encoding='utf-8') as f:
@@ -62,7 +63,8 @@ def main():
         print(f"Dubbing text: {text[:30]}...")
         dub_cmd = [
             "python", "scripts/dubbing.py", "dub",
-            "--text", text, "--voice", args.voice, "--out", audio_path
+            "--text", text, "--voice", args.voice, "--out", audio_path,
+            "--temperature", args.temperature
         ]
         subprocess.run(dub_cmd, check=True)
         
