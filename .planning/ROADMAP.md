@@ -138,6 +138,30 @@
 - Mapped to phases: 21
 - Unmapped: 0 ✓
 
+### Phase 6: Voice control methods: instruct-based and tag-based synthesis control
+
+**Goal:** Research and implement two voice control methods across all TTS engines: (1) instruct-based control via natural language descriptions, (2) tag-based control via inline markers like `[laughter]`, `[sigh]`.
+
+**Depends on:** Phase 5 (emotion control baseline)
+
+**Requirements:** CTRL-01, CTRL-02, CTRL-03, CTRL-04
+
+**Success Criteria:**
+1. Deep research on each model's GitHub README for instruct/tag support
+2. Markdown voice config file format defined (allowing empty instruct for defaults)
+3. Instruct parameters passed to engines that support them (OmniVoice, etc.)
+4. Tag markers passed raw to engines, not intercepted/parsed
+5. Warning issued when model doesn't support provided instruct/tags
+6. Each engine handles its own tag/instruct format natively
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Define voice control interface and config format
+- [ ] 06-02-PLAN.md — Implement OmniVoice instruct support
+- [ ] 06-03-PLAN.md — Add warning mechanism for unsupported engines
+- [ ] 06-04-PLAN.md — CLI integration and voice config loading
+
 ---
 *Roadmap created: 2026-04-11*
-*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*
+*Last updated: 2026-04-11 after planning Phase 6*
