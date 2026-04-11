@@ -4,52 +4,46 @@
 **Milestone:** v1.0 — Multi-Model Voice Cloning
 **Depth:** Standard | **Parallelization:** Enabled
 
-## Phase 1: Refactor TTS Engine Architecture
+## Phase 1: Refactor TTS Engine Architecture ✓
 
 **Goal:** Create a pluggable TTS engine architecture with abstract base class, isolating existing IndexTTS-2 and Qwen3-TTS code into separate modules while preserving all existing functionality.
+
+**Status:** Complete (2026-04-11)
 
 **Depends on:** None (foundation phase)
 
 **Requirements:** CODE-01, CODE-02, CODE-03, CODE-04, PERF-03
 
 **Success Criteria:**
-1. Abstract `TTSEngine` base class defines `clone_voice()`, `synthesize()`, `get_emotion_params()`, `load_model()` interfaces
-2. `IndexTTSEngine` and `Qwen3TTSEngine` classes implement the base interface with all existing behavior preserved
-3. Engine factory function routes to correct engine based on `TTS_ENGINE` config value
-4. Existing `scripts/dubbing.py` uses the new architecture without behavior changes
-5. All existing voice clones in `data/voices/` continue to work without migration
-6. Multi-threaded synthesis works with both engines
+1. ✓ Abstract `TTSEngine` base class defines `clone_voice()`, `synthesize()`, `get_emotion_params()`, `load_model()` interfaces
+2. ✓ `IndexTTSEngine` and `Qwen3TTSEngine` classes implement the base interface with all existing behavior preserved
+3. ✓ Engine factory function routes to correct engine based on `TTS_ENGINE` config value
+4. ✓ Existing `scripts/dubbing.py` uses the new architecture without behavior changes
+5. ✓ All existing voice clones in `data/voices/` continue to work without migration
+6. ✓ Multi-threaded synthesis works with both engines
 
-**Plans:** 2/3 plans executed
-
-Plans:
-- [x] 01-refactor-tts-engine-architecture-01-PLAN.md — Create TTSEngine abstract base class and EmotionParser utility
-- [x] 01-refactor-tts-engine-architecture-02-PLAN.md — Extract IndexTTS-2 and Qwen3-TTS into separate engine classes
-- [ ] 01-refactor-tts-engine-architecture-03-PLAN.md — Create engine factory and refactor dubbing.py
+**Plans:** 3/3 complete
 
 ---
 
-## Phase 2: Integrate LongCat-AudioDiT and OmniVoice Models
+## Phase 2: Integrate LongCat-AudioDiT and OmniVoice Models ✓
 
 **Goal:** Implement `LongCatAudioDiTEngine` and `OmniVoiceEngine` classes that implement the `TTSEngine` interface, enabling voice cloning and synthesis with both new models.
+
+**Status:** Complete (2026-04-11)
 
 **Depends on:** Phase 1 (pluggable architecture must exist)
 
 **Requirements:** MODEL-01, MODEL-02
 
 **Success Criteria:**
-1. `LongCatAudioDiTEngine` implements all base class methods with working voice cloning and synthesis
-2. `OmniVoiceEngine` implements all base class methods with working voice cloning and synthesis
-3. Both engines can be loaded via engine factory when configured
-4. Model-specific dependencies are documented and installable
-5. Basic synthesis test produces audible output for both models
+1. ✓ `LongCatAudioDiTEngine` implements all base class methods with working voice cloning and synthesis
+2. ✓ `OmniVoiceEngine` implements all base class methods with working voice cloning and synthesis
+3. ✓ Both engines can be loaded via engine factory when configured
+4. ✓ Model-specific dependencies are documented and installable
+5. ✓ Basic synthesis test produces audible output for both models
 
-**Plans:** 3 plans
-
-Plans:
-- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-01-PLAN.md — Implement LongCatAudioDiTEngine with TTSEngine interface
-- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-02-PLAN.md — Implement OmniVoiceEngine with TTSEngine interface
-- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-03-PLAN.md — Register engines in factory and update package exports
+**Plans:** 3/3 complete
 
 ---
 

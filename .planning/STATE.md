@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** Users can clone any voice from a short audio sample and generate natural-sounding speech with emotion control, choosing from multiple TTS models.
-**Current focus:** Phase 1 — Refactor TTS engine architecture for pluggable models
+**Current focus:** Phase 3 — Configuration for 4 Models
 
 ## Phase Status
 
 | Phase | Status | Plans | Progress |
 |-------|--------|-------|----------|
-| 1 | ◐ In progress | 2/3 | Plans 01-02 complete |
-| 2 | ○ Not started | 0/0 | 0% |
+| 1 | ✓ Complete | 3/3 | 100% |
+| 2 | ✓ Complete | 3/3 | 100% |
 | 3 | ○ Not started | 0/0 | 0% |
 | 4 | ○ Not started | 0/0 | 0% |
 | 5 | ○ Not started | 0/0 | 0% |
@@ -26,18 +26,23 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 - Voice clones stored in `data/voices/NAME/` with `meta.json` and `ref_audio.wav`
 - Emotion control via text tags parsed into `emo_vector`
 - Current TTS engine selection via `TTS_ENGINE` config (indextts or qwen3-tts)
+- **Phase 2 added**: LongCat-AudioDiT and OmniVoice engine implementations
+- **4 TTS engines now available**: indextts, qwen3-tts, longcat-audiodit, omnivoice
 
 ### Roadmap Evolution
 - Project initialized with 5 phases to add LongCat-AudioDiT and OmniVoice support
-- Research pending for both new models (LongCat-AudioDiT, OmniVoice)
+- Research complete for both new models (02-RESEARCH.md created)
+- Phase 1 complete: Pluggable TTS engine architecture
+- Phase 2 complete: LongCat-AudioDiT and OmniVoice engine implementations
 
 ## Active Decisions
 
 | Decision | Status | Notes |
 |----------|--------|-------|
-| Pluggable engine architecture | In progress | ABC (Plan 01) + engine implementations (Plan 02) done; factory next (Plan 03) |
-| Per-model feature serialization | Complete | IndexTTS extracts .pt features; Qwen3-TTS uses zero-shot (no extraction) |
-| Emotion mapping layer | Complete | EmotionParser (Plan 01) + per-engine integration (Plan 02: IndexTTS uses emo_vector, Qwen3 strips tags) |
+| Pluggable engine architecture | Complete | ABC + 4 engine implementations + factory pattern |
+| Per-model feature serialization | Complete | IndexTTS extracts .pt features; others use zero-shot |
+| Emotion mapping layer | Complete | EmotionParser + per-engine integration |
+| Local-only for new engines | Complete | LongCat and OmniVoice are local-only (no API mode) |
 
 ---
-*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*
+*Last updated: 2026-04-11 after completing Phase 2*
