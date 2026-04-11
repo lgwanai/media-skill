@@ -106,17 +106,12 @@ class IndexTTSEngine(TTSEngine):
         For local mode: saves audio, extracts and persists .pt feature file.
         For API mode: uploads to SiliconFlow and gets voice URI.
         """
-        from scripts.utils import load_config
-
         config = self.config
         if not text:
-            # Auto-transcribe if text not provided
-            from scripts.dubbing import auto_transcribe_audio
-
-            text = auto_transcribe_audio(ref_audio, config)
-            if not text:
-                print("自动识别文本为空，无法进行克隆。")
-                sys.exit(1)
+            raise ValueError(
+                "text is required for clone_voice. "
+                "Provide transcribed text or use auto_transcribe_audio before calling."
+            )
 
         voices_dir = self._get_voices_dir()
         voice_path = os.path.join(voices_dir, voice_name)
