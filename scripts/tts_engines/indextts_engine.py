@@ -174,8 +174,12 @@ class IndexTTSEngine(TTSEngine):
         voice_id: str,
         output_path: str,
         tts_params: dict | None = None,
+        instruct: str | None = None,
     ) -> bool:
         """Synthesize speech using IndexTTS-2."""
+        if instruct:
+            self._warn_unsupported_instruct("IndexTTS-2")
+
         if tts_params is None:
             tts_params = {}
         else:

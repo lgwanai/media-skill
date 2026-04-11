@@ -74,7 +74,10 @@ class LongCatAudioDiTEngine(TTSEngine):
         
         return f"longcat:{ref_audio_path}"
     
-    def synthesize(self, text: str, voice_id: str, output_path: str, tts_params: dict | None = None) -> bool:
+    def synthesize(self, text: str, voice_id: str, output_path: str, tts_params: dict | None = None, instruct: str | None = None) -> bool:
+        if instruct:
+            self._warn_unsupported_instruct("LongCat-AudioDiT")
+
         params, clean_text = self.get_emotion_params(text)
         
         self.load_model()

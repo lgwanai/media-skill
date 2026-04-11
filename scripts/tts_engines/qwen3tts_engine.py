@@ -106,8 +106,12 @@ class Qwen3TTSEngine(TTSEngine):
         voice_id: str,
         output_path: str,
         tts_params: dict | None = None,
+        instruct: str | None = None,
     ) -> bool:
         """Synthesize speech using Qwen3-TTS."""
+        if instruct:
+            self._warn_unsupported_instruct("Qwen3-TTS")
+
         _, clean_text = EmotionParser.parse_emotion_tags(text)
 
         if not clean_text.strip():
