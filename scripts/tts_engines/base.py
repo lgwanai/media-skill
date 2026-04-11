@@ -32,6 +32,11 @@ class TTSEngine(ABC):
         """Default: engines do not support instruct unless explicitly implemented."""
         return False
 
+    @property
+    def supports_streaming(self) -> bool:
+        """Default: engines do not support streaming unless explicitly implemented."""
+        return False
+
     def _warn_unsupported_instruct(self, engine_name: str) -> None:
         """Log a warning when instruct is provided but not supported by this engine.
 

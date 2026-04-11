@@ -37,6 +37,16 @@ class Qwen3TTSEngine(TTSEngine):
     def supports_emotion(self) -> bool:
         return False
 
+    @property
+    def supports_instruct(self) -> bool:
+        """Qwen3-TTS VoiceDesign model supports natural language voice design."""
+        return True
+
+    @property
+    def supports_streaming(self) -> bool:
+        """Qwen3-TTS supports extreme low-latency streaming (97ms end-to-end)."""
+        return True
+
     def load_model(self) -> None:
         """Load the Qwen3-TTS local model.
 
@@ -108,10 +118,15 @@ class Qwen3TTSEngine(TTSEngine):
         tts_params: dict | None = None,
         instruct: str | None = None,
     ) -> bool:
-        """Synthesize speech using Qwen3-TTS."""
-        if instruct:
-            self._warn_unsupported_instruct("Qwen3-TTS")
+        """Synthesize speech using Qwen3-TTS.
 
+        Args:
+            text: Text to synthesize.
+            voice_id: Voice identifier (qwen:<path> for cloned, or speaker name).
+            output_path: Output file path.
+            tts_params: Optional engine parameters.
+            instruct: Voice design instruction (e.g., "撒娇稚嫩的萝莉女声").
+        """
         _, clean_text = EmotionParser.parse_emotion_tags(text)
 
         if not clean_text.strip():
@@ -122,11 +137,11 @@ class Qwen3TTSEngine(TTSEngine):
 
         if mode == "local":
             return self._synthesize_local(
-                clean_text, voice_id, output_path, tts_params
+                clean_text, voice_id, output_path, tts_params, instruct
             )
         else:
             return self._synthesize_api(
-                clean_text, voice_id, output_path, tts_params
+                clean_text, voice_id, output_path, tts_params, instruct
             )
 
     def get_emotion_params(self, text: str) -> tuple[dict, str]:
@@ -147,13 +162,13 @@ class Qwen3TTSEngine(TTSEngine):
         voice_id: str,
         output_path: str,
         tts_params: dict | None,
+        instruct: str | None = None,
     ) -> bool:
-        """Local Qwen3-TTS synthesis with full audio post-processing."""
+        """Local Qwen3-TTS synthesis with instruct support."""
         self.load_model()
         if self._model is None:
             return False
 
-        # Resolve ref_audio and ref_text from voice_id
         ref_audio = None
         ref_text = None
         if voice_id.startswith("qwen:"):
@@ -173,7 +188,22 @@ class Qwen3TTSEngine(TTSEngine):
             import soundfile as sf
 
             with self._infer_lock:
-                if ref_audio and ref_text:
+                if instruct:
+                    if ref_audio and ref_text:
+                        wavs, sr = self._model.generate_custom_voice(
+                            text=text,
+                            language="Chinese",
+                            ref_audio=ref_audio,
+                            ref_text=ref_text,
+                            instruct=instruct,
+                        )
+                    else:
+                        wavs, sr = self._model.generate_voice_design(
+                            text=text,
+                            language="Chinese",
+                            instruct=instruct,
+                        )
+                elif ref_audio and ref_text:
                     wavs, sr = self._model.generate_voice_clone(
                         text=text,
                         language="Chinese",
@@ -299,8 +329,18 @@ class Qwen3TTSEngine(TTSEngine):
         voice_id: str,
         output_path: str,
         tts_params: dict | None,
+        instruct: str | None = None,
     ) -> bool:
-        """API mode synthesis via DashScope MultiModalConversation."""
+        """API mode synthesis via DashScope MultiModalConversation.
+
+        Note: Instruct (Voice Design) is primarily for local VoiceDesign model.
+        API mode uses reference audio cloning or preset speakers.
+        """
+        if instruct:
+            print(
+                "[Qwen3-TTS API] Instruct parameter is best used in local mode "
+                "with VoiceDesign model. API mode will use reference audio cloning."
+            )
         try:
             import dashscope
 

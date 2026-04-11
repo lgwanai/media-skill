@@ -35,6 +35,11 @@ class IndexTTSEngine(TTSEngine):
     def supports_emotion(self) -> bool:
         return True
 
+    @property
+    def supports_streaming(self) -> bool:
+        """IndexTTS-2 supports streaming via stream_return=True parameter."""
+        return True
+
     def load_model(self) -> None:
         """Load the IndexTTS-2 local model.
 
