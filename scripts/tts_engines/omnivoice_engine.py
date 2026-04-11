@@ -34,6 +34,10 @@ class OmniVoiceEngine(TTSEngine):
     def supports_emotion(self) -> bool:
         return False
 
+    @property
+    def supports_instruct(self) -> bool:
+        return True
+
     def load_model(self) -> None:
         with self._model_lock:
             if self._model is not None:
