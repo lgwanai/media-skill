@@ -63,12 +63,11 @@
 5. Config validation rejects invalid engine names with helpful error message
 6. Engine-specific config is only loaded when that engine is selected
 
-**Plans:**
-- [ ] Update `config.txt` with LongCat-AudioDiT and OmniVoice sections
-- [ ] Update `config.example.txt` with complete 4-model template
-- [ ] Update config parser to validate `TTS_ENGINE` against allowed values
-- [ ] Update engine factory to load model-specific config
-- [ ] Add config documentation comments explaining each model's requirements
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Update config.txt with LongCat-AudioDiT and OmniVoice sections
+- [ ] 03-02-PLAN.md — Update config.example.txt with complete 4-model template
 
 ---
 
@@ -133,12 +132,12 @@
 | CODE-03 | Phase 1 | Complete |
 | CODE-04 | Phase 1 | Complete |
 | PERF-03 | Phase 1 | Complete |
-| MODEL-01 | Phase 2 | Pending |
-| MODEL-02 | Phase 2 | Pending |
+| MODEL-01 | Phase 2 | Complete |
+| MODEL-02 | Phase 2 | Complete |
 | MODEL-03 | Phase 3 | Pending |
 | CONFIG-01 | Phase 3 | Pending |
 | CONFIG-02 | Phase 3 | Pending |
-| CONFIG-03 | Phase 3 | Pending |
+| CONFIG-03 | Phase 2 | Complete |
 | CONFIG-04 | Phase 3 | Pending |
 | CLONE-01 | Phase 4 | Pending |
 | CLONE-02 | Phase 4 | Pending |

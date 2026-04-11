@@ -15,7 +15,7 @@
 
 - [ ] **CONFIG-01**: config.txt includes configuration sections for LongCat-AudioDiT (mode, URL, API key, model name)
 - [ ] **CONFIG-02**: config.txt includes configuration sections for OmniVoice (mode, URL, API key, model name)
-- [ ] **CONFIG-03**: TTS_ENGINE config accepts all 4 model identifiers as valid values
+- [x] **CONFIG-03**: TTS_ENGINE config accepts all 4 model identifiers as valid values
 - [ ] **CONFIG-04**: config.example.txt updated with all 4 model configuration templates
 
 ### Voice Cloning & Persistence
@@ -74,7 +74,7 @@
 | MODEL-03 | Phase 3 | Pending |
 | CONFIG-01 | Phase 3 | Pending |
 | CONFIG-02 | Phase 3 | Pending |
-| CONFIG-03 | Phase 3 | Pending |
+| CONFIG-03 | Phase 2 | Complete |
 | CONFIG-04 | Phase 3 | Pending |
 | CLONE-01 | Phase 4 | Pending |
 | CLONE-02 | Phase 4 | Pending |
