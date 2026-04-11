@@ -132,6 +132,7 @@
 | EMO-02 | Phase 5 | Pending |
 | EMO-03 | Phase 5 | Pending |
 | EMO-04 | Phase 5 | Pending |
+| CTRL-02 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 21 total
@@ -157,7 +158,7 @@
 **Plans:** 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Define voice control interface and config format
+- [x] 06-01-PLAN.md — Define voice control interface and config format
 - [ ] 06-02-PLAN.md — Implement OmniVoice instruct support
 - [ ] 06-03-PLAN.md — Add warning mechanism for unsupported engines
 - [ ] 06-04-PLAN.md — CLI integration and voice config loading

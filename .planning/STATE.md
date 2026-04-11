@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** Users can clone any voice from a short audio sample and generate natural-sounding speech with emotion control, choosing from multiple TTS models.
-**Current focus:** Phase 5 — Emotion Control for All Models
+**Current focus:** Phase 6 — Voice control methods: instruct-based and tag-based synthesis control
 
 ## Phase Status
 
@@ -15,7 +15,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | 2 | ✓ Complete | 3/3 | 100% |
 | 3 | ✓ Complete | 2/2 | 100% |
 | 4 | ✓ Complete | - | 100% |
-| 5 | ○ Not started | 0/0 | 0% |
+| 5 | ✓ Complete | - | 100% |
+| 6 | ◐ In progress | 1/1 | Plan 01 complete |
 
 ## Accumulated Context
 
@@ -38,6 +39,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 - Phase 2 complete: LongCat-AudioDiT and OmniVoice engine implementations
 - Phase 3 complete: Configuration for 4 engines
 - Phase 4 complete: Multi-model voice clone persistence with cache invalidation
+- Phase 5 complete: Emotion control already implemented via EmotionParser (IndexTTS-only)
+- Phase 6 added: Voice control methods (instruct-based and tag-based synthesis control)
 
 ## Active Decisions
 
@@ -49,6 +52,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | Local-only for new engines | Complete | LongCat and OmniVoice are local-only (no API mode) |
 | Multi-model clone support | Complete | `--models` flag + `compatible_models` array |
 | Cache invalidation | Complete | MD5 hash comparison for reference audio |
+| Instruct parameter optional | Complete | `instruct: str | None` for backward compatibility |
+| supports_instruct property | Complete | Abstract property for engine capability detection |
 
 ---
-*Last updated: 2026-04-11 after completing Phase 4*
+*Last updated: 2026-04-11 after completing Phase 6 Plan 01*
