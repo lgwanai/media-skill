@@ -20,11 +20,11 @@
 5. All existing voice clones in `data/voices/` continue to work without migration
 6. Multi-threaded synthesis works with both engines
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
-- [ ] 01-refactor-tts-engine-architecture-01-PLAN.md — Create TTSEngine abstract base class and EmotionParser utility
-- [ ] 01-refactor-tts-engine-architecture-02-PLAN.md — Extract IndexTTS-2 and Qwen3-TTS into separate engine classes
+- [x] 01-refactor-tts-engine-architecture-01-PLAN.md — Create TTSEngine abstract base class and EmotionParser utility
+- [x] 01-refactor-tts-engine-architecture-02-PLAN.md — Extract IndexTTS-2 and Qwen3-TTS into separate engine classes
 - [ ] 01-refactor-tts-engine-architecture-03-PLAN.md — Create engine factory and refactor dubbing.py
 
 ---
@@ -135,11 +135,11 @@ Plans:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CODE-01 | Phase 1 | Pending |
-| CODE-02 | Phase 1 | Pending |
-| CODE-03 | Phase 1 | Pending |
-| CODE-04 | Phase 1 | Pending |
-| PERF-03 | Phase 1 | Pending |
+| CODE-01 | Phase 1 | Complete |
+| CODE-02 | Phase 1 | Complete |
+| CODE-03 | Phase 1 | Complete |
+| CODE-04 | Phase 1 | Complete |
+| PERF-03 | Phase 1 | Complete |
 | MODEL-01 | Phase 2 | Pending |
 | MODEL-02 | Phase 2 | Pending |
 | MODEL-03 | Phase 3 | Pending |
@@ -165,4 +165,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-04-11*
-*Last updated: 2026-04-11 after initialization*
+*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*

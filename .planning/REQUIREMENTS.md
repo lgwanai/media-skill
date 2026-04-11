@@ -34,16 +34,16 @@
 
 ### Code Quality & Architecture
 
-- [ ] **CODE-01**: TTS engines use a common abstract base class/interface for pluggable architecture
-- [ ] **CODE-02**: Each model implements the same interface: `clone_voice()`, `synthesize()`, `get_emotion_params()`
-- [ ] **CODE-03**: Engine-specific code is isolated in separate modules (no monolithic if/else chains)
-- [ ] **CODE-04**: Existing IndexTTS-2 and Qwen3-TTS functionality is preserved (backward compatible)
+- [x] **CODE-01**: TTS engines use a common abstract base class/interface for pluggable architecture
+- [x] **CODE-02**: Each model implements the same interface: `clone_voice()`, `synthesize()`, `get_emotion_params()`
+- [x] **CODE-03**: Engine-specific code is isolated in separate modules (no monolithic if/else chains)
+- [x] **CODE-04**: Existing IndexTTS-2 and Qwen3-TTS functionality is preserved (backward compatible)
 
 ### Performance
 
 - [ ] **PERF-01**: Cached voice features are reused without re-extraction on subsequent synthesis
 - [ ] **PERF-02**: Feature cache is invalidated when reference audio changes
-- [ ] **PERF-03**: Multi-threaded synthesis works with all 4 models
+- [x] **PERF-03**: Multi-threaded synthesis works with all 4 models
 
 ## v2 Requirements
 
@@ -84,13 +84,13 @@
 | EMO-02 | Phase 5 | Pending |
 | EMO-03 | Phase 5 | Pending |
 | EMO-04 | Phase 5 | Pending |
-| CODE-01 | Phase 1 | Pending |
-| CODE-02 | Phase 1 | Pending |
-| CODE-03 | Phase 1 | Pending |
-| CODE-04 | Phase 1 | Pending |
+| CODE-01 | Phase 1 | Complete |
+| CODE-02 | Phase 1 | Complete |
+| CODE-03 | Phase 1 | Complete |
+| CODE-04 | Phase 1 | Complete |
 | PERF-01 | Phase 4 | Pending |
 | PERF-02 | Phase 4 | Pending |
-| PERF-03 | Phase 1 | Pending |
+| PERF-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 21 total
@@ -99,4 +99,4 @@
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 after initial definition*
+*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*

@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 
 | Phase | Status | Plans | Progress |
 |-------|--------|-------|----------|
-| 1 | ◐ In progress | 1/3 | Plan 01 complete |
+| 1 | ◐ In progress | 2/3 | Plans 01-02 complete |
 | 2 | ○ Not started | 0/0 | 0% |
 | 3 | ○ Not started | 0/0 | 0% |
 | 4 | ○ Not started | 0/0 | 0% |
@@ -35,9 +35,9 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 
 | Decision | Status | Notes |
 |----------|--------|-------|
-| Pluggable engine architecture | In progress | ABC created (Plan 01); engine implementations next (Plan 02) |
-| Per-model feature serialization | Pending | Store features in model-specific formats |
-| Emotion mapping layer | In progress | EmotionParser utility extracted (Plan 01); per-engine mapping in Plan 02 |
+| Pluggable engine architecture | In progress | ABC (Plan 01) + engine implementations (Plan 02) done; factory next (Plan 03) |
+| Per-model feature serialization | Complete | IndexTTS extracts .pt features; Qwen3-TTS uses zero-shot (no extraction) |
+| Emotion mapping layer | Complete | EmotionParser (Plan 01) + per-engine integration (Plan 02: IndexTTS uses emo_vector, Qwen3 strips tags) |
 
 ---
-*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-01*
+*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*
