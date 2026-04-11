@@ -16,7 +16,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | 3 | ✓ Complete | 2/2 | 100% |
 | 4 | ✓ Complete | - | 100% |
 | 5 | ✓ Complete | - | 100% |
-| 6 | ◐ In progress | 1/1 | Plan 01 complete |
+| 6 | ◐ In progress | 3/3 | Plans 01, 02, 03 complete |
 
 ## Accumulated Context
 
@@ -53,7 +53,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | Multi-model clone support | Complete | `--models` flag + `compatible_models` array |
 | Cache invalidation | Complete | MD5 hash comparison for reference audio |
 | Instruct parameter optional | Complete | `instruct: str | None` for backward compatibility |
-| supports_instruct property | Complete | Abstract property for engine capability detection |
+| supports_instruct property | Complete | Default False in base class, OmniVoice overrides to True |
+| Instruct warning mechanism | Complete | _warn_unsupported_instruct() in base, all non-OmniVoice warn |
 
 ---
-*Last updated: 2026-04-11 after completing Phase 6 Plan 01*
+*Last updated: 2026-04-11 after completing Phase 6 Plan 03*

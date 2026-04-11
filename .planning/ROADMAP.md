@@ -155,7 +155,7 @@
 5. Warning issued when model doesn't support provided instruct/tags
 6. Each engine handles its own tag/instruct format natively
 
-**Plans:** 4 plans
+**Plans:** 3/4 plans executed
 
 Plans:
 - [x] 06-01-PLAN.md — Define voice control interface and config format
