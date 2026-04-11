@@ -20,13 +20,12 @@
 5. All existing voice clones in `data/voices/` continue to work without migration
 6. Multi-threaded synthesis works with both engines
 
-**Plans:**
-- [ ] Define `TTSEngine` abstract base class in `scripts/tts_engines/base.py`
-- [ ] Extract IndexTTS-2 logic into `scripts/tts_engines/indextts_engine.py`
-- [ ] Extract Qwen3-TTS logic into `scripts/tts_engines/qwen3tts_engine.py`
-- [ ] Create engine factory in `scripts/tts_engines/__init__.py`
-- [ ] Refactor `scripts/dubbing.py` to use engine factory
-- [ ] Run end-to-end test with existing config to verify backward compatibility
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-refactor-tts-engine-architecture-01-PLAN.md — Create TTSEngine abstract base class and EmotionParser utility
+- [ ] 01-refactor-tts-engine-architecture-02-PLAN.md — Extract IndexTTS-2 and Qwen3-TTS into separate engine classes
+- [ ] 01-refactor-tts-engine-architecture-03-PLAN.md — Create engine factory and refactor dubbing.py
 
 ---
 
