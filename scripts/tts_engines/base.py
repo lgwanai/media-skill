@@ -28,10 +28,23 @@ class TTSEngine(ABC):
         ...
 
     @property
-    @abstractmethod
     def supports_instruct(self) -> bool:
-        """Return True if this engine supports instruct-based voice design."""
-        ...
+        """Default: engines do not support instruct unless explicitly implemented."""
+        return False
+
+    def _warn_unsupported_instruct(self, engine_name: str) -> None:
+        """Log a warning when instruct is provided but not supported by this engine.
+
+        Args:
+            engine_name: Name of the engine for the warning message.
+        """
+        import logging
+
+        logging.warning(
+            f"[{engine_name}] Instruct parameter provided but not supported. "
+            f"This engine uses reference audio cloning only. "
+            f"For voice design via instruct, use OmniVoice engine."
+        )
 
     @abstractmethod
     def load_model(self) -> None:
