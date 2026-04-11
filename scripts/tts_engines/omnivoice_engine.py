@@ -138,5 +138,7 @@ class OmniVoiceEngine(TTSEngine):
             return True
     
     def get_emotion_params(self, text: str) -> tuple[dict, str]:
-        tags, clean_text = EmotionParser.parse_emotion_tags(text)
-        return {}, clean_text
+        # OmniVoice handles ALL tags natively (emotion tags, [laughter], [sigh], etc.)
+        # Do NOT strip any brackets - pass text through unchanged
+        # OmniVoice will handle the tags itself
+        return {}, text
