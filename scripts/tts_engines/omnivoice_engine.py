@@ -77,26 +77,36 @@ class OmniVoiceEngine(TTSEngine):
         
         return f"omnivoice:{ref_audio_path}"
     
-    def synthesize(self, text: str, voice_id: str, output_path: str, tts_params: dict | None = None) -> bool:
+    def synthesize(
+        self,
+        text: str,
+        voice_id: str,
+        output_path: str,
+        tts_params: dict | None = None,
+        instruct: str | None = None,
+    ) -> bool:
+        # OmniVoice handles ALL tags natively (emotion tags, [laughter], [sigh], etc.)
+        # Do NOT strip any brackets - pass text through unchanged
+        # OmniVoice will handle the tags itself
         params, clean_text = self.get_emotion_params(text)
-        
+
         self.load_model()
-        
+
         with self._infer_lock:
             import torch
             import torchaudio
             import os
-            
+
             num_step = tts_params.get("num_step", self.config.get("OMNIVOICE_NUM_STEP", 32)) if tts_params else self.config.get("OMNIVOICE_NUM_STEP", 32)
             guidance_scale = tts_params.get("guidance_scale", self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)) if tts_params else self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)
-            
+
             if voice_id and voice_id.startswith("omnivoice:"):
                 ref_audio_path = voice_id[10:]
             elif voice_id:
                 ref_audio_path = voice_id
             else:
                 ref_audio_path = None
-            
+
             ref_text = None
             if ref_audio_path and os.path.exists(ref_audio_path):
                 voice_dir = os.path.dirname(ref_audio_path)
@@ -105,21 +115,22 @@ class OmniVoiceEngine(TTSEngine):
                     with open(meta_path, "r", encoding="utf-8") as f:
                         meta = json.load(f)
                         ref_text = meta.get("text", None)
-            
+
             language = tts_params.get("language", "Chinese") if tts_params else "Chinese"
-            
+
             audios = self._model.generate(
-                text=clean_text,
+                text=clean_text,  # Contains OmniVoice tags like [laughter], [sigh]
                 language=language,
                 ref_audio=ref_audio_path,
                 ref_text=ref_text,
                 num_step=num_step,
                 guidance_scale=guidance_scale,
+                instruct=instruct,
             )
-            
+
             os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
             torchaudio.save(output_path, audios[0].unsqueeze(0).cpu(), 24000)
-            
+
             return True
     
     def get_emotion_params(self, text: str) -> tuple[dict, str]:
