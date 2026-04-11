@@ -4,8 +4,13 @@
 # ---------------------------------------------------------
 # 1. 基础配置
 # ---------------------------------------------------------
-# 模型存放目录，用于存放 FunASR 等本地下载的模型，默认存放于 models/ 目录
-MODEL_DIR = models/
+# 统一的输出目录，所有的临时文件和最终结果都将保存在这里
+OUTPUT_DIR = output
+
+# 本地大模型及语音模型存放的统一根目录。
+# 默认留空时，在 macOS/Linux 下将自动使用 ~/.models/
+# 包含 FunASR、ModelScope 和 HuggingFace(IndexTTS依赖) 的缓存
+MODEL_DIR = ~/.models/
 
 # ---------------------------------------------------------
 # 2. 纯文本语义分析大模型配置 (Step 2)
@@ -19,41 +24,75 @@ TEXT_LLM_API_KEY = your_text_llm_api_key_here
 TEXT_LLM_MODEL_NAME = deepseek-chat
 
 # ---------------------------------------------------------
-# 3. 多模态大模型配置 (Step 3)
-# 用于第三步：基于视频画面和声音进行多模态深度识别，精细剔除局部瑕疵
+# 3. 多模态大模型配置 (Step 3 & 爆款分析)
+# 用于精细剔除局部瑕疵，以及多模态爆款视频深度解构
 # ---------------------------------------------------------
-# 多模态大模型 API 接口地址（兼容 OpenAI 格式，目前推荐小米 Omini 官方接口：https://platform.xiaomimimo.com/#/console/usage）
+# 多模态大模型 API 接口地址（兼容 OpenAI 格式，推荐小米 Omini）
 OMINI_URL = https://api.xiaomimimo.com/v1
 # 你的多模态大模型 API Key
 OMINI_API_KEY = your_omini_api_key_here
 # 使用的多模态大模型名称
 OMINI_MODEL_NAME = mimo-v2-omni
-# 是否开启模拟 OpenClaw 调用（免费使用 mimo 模型），开启填 true，关闭填 false
-SIMULATE_OPENCLAW = false
 
 # ---------------------------------------------------------
 # 4. 腾讯云 COS 配置 (对象存储)
-# 用于将本地切片视频上传至云端，以获取公网 URL 供多模态大模型读取
+# 用于将本地切片或完整视频上传至云端，以获取公网 URL 供多模态大模型读取
 # ---------------------------------------------------------
 # 腾讯云 API 密钥 ID
 COS_SECRET_ID = your_cos_secret_id_here
 # 腾讯云 API 密钥 Key
 COS_SECRET_KEY = your_cos_secret_key_here
-# 存储桶所在地域（如 ap-beijing, ap-shanghai, ap-guangzhou 等）
+# 存储桶所在地域（如 ap-beijing）
 COS_REGION = ap-beijing
 # 存储桶名称（格式为 BucketName-APPID）
 COS_BUCKET_NAME = your_bucket_name_here
-ENABLE_SILENCE_ANALYSIS = false
 
 # ---------------------------------------------------------
-# 5. IndexTTS-2 配置 (用于 TTS 配音与声音克隆)
+# 5. TTS 四引擎配置
 # ---------------------------------------------------------
-# 运行模式：'api' (使用 SiliconFlow 云端接口) 或 'local' (本地推理)
+# TTS_ENGINE 可选: indextts, qwen3-tts, longcat-audiodit, omnivoice
+# 
+# 引擎特性对比:
+# - indextts: 高情感表现力，支持情绪标签 [情绪:强度]，API/本地双模式
+# - qwen3-tts: 极速推理，高音色还原，支持情绪标签，API/本地双模式
+# - longcat-audiodit: 本地扩散模型，零样本克隆，不支持情绪控制
+# - omnivoice: 支持 600+ 语言，零样本克隆，不支持情绪控制
+TTS_ENGINE = indextts
+
+# 5.1 IndexTTS-2 配置
+# 高情感表现力的 TTS 引擎，支持通过 [情绪:强度] 标签控制语音情绪
+# INDEXTTS_MODE 可选: api 或 local
 INDEXTTS_MODE = local
-# 如果使用 api 模式，请填写 SiliconFlow API Key
-SILICONFLOW_API_KEY = your_siliconflow_api_key_here
+INDEXTTS_URL = https://api.siliconflow.cn/v1/audio/speech
+INDEXTTS_API_KEY = your_indextts_api_key_here
+INDEXTTS_MODEL_NAME = IndexTeam/IndexTTS-2
 
-# 配音基准情绪参数（当大模型未返回或未手动指定时使用的默认值）
+# 5.2 Qwen3-TTS 配置
+# 极速推理的 TTS 引擎，支持 API 和本地两种模式
+# QWEN3TTS_MODE 可选: api 或 local
+QWEN3TTS_MODE = local
+QWEN3TTS_URL = wss://dashscope.aliyuncs.com/api-ws/v1/inference
+QWEN3TTS_API_KEY = your_qwen3tts_api_key_here
+QWEN3TTS_MODEL_NAME = qwen3-tts
+
+# 5.3 LongCat-AudioDiT 配置
+# 本地扩散模型 TTS，支持零样本声音克隆
+# 注意：LongCat-AudioDiT 仅支持本地模式，不支持 API 调用
+LONGCAT_MODEL_NAME = meituan-longcat/LongCat-AudioDiT-1B
+LONGCAT_STEPS = 16
+LONGCAT_CFG_STRENGTH = 4.0
+
+# 5.4 OmniVoice 配置
+# 支持 600+ 种语言的零样本声音克隆引擎
+# 注意：OmniVoice 仅支持本地模式，不支持 API 调用
+OMNIVOICE_MODEL_NAME = k2-fsa/OmniVoice
+OMNIVOICE_NUM_STEP = 32
+OMNIVOICE_GUIDANCE_SCALE = 2.0
+
+# ---------------------------------------------------------
+# 6. 配音基准情绪参数
+# 当没有特殊说明或大模型未调整时使用的默认值
+# ---------------------------------------------------------
 TTS_DEFAULT_TEMPERATURE = 0.65
 TTS_DEFAULT_TOP_K = 40
 TTS_DEFAULT_TOP_P = 0.8
