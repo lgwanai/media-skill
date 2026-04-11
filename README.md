@@ -31,9 +31,15 @@
 ### 4. 🔍 “大海捞针”式主题提取
 不用再拖动进度条苦苦寻找素材了。告诉 AI 你想要什么主题，它会通读所有内容，精准定位并提取所有相关片段，还会贴心地帮你保留上下文，确保剪出来的合集语义连贯。
 
-### 5. 🎙️ 专属声音克隆与智能配音 (支持双引擎)
-在本地建立你自己的“专属音色库”。只需几秒钟的样本，即可克隆你的声音。在后续配音时，支持**智能拆分超长文本**并**多线程极速并发生成**。AI 还会根据你输入的文本情境，自动调整语速和情绪。
-**全新升级双引擎支持**：现在不仅支持高情感表现力的 IndexTTS-2，还全新接入了极速且高音色还原度的 **Qwen3-TTS**，支持在 `config.txt` 中一键切换，两款引擎均支持 `api` 和 `local` 模式！
+### 5. 🎙️ 专属声音克隆与智能配音 (支持四引擎)
+在本地建立你自己的"专属音色库"。只需几秒钟的样本，即可克隆你的声音。在后续配音时，支持**智能拆分超长文本**并**多线程极速并发生成**。AI 还会根据你输入的文本情境，自动调整语速和情绪。
+**全新升级四引擎支持**：
+- **IndexTTS-2**：高情感表现力，支持精确情绪控制标签
+- **Qwen3-TTS**：极速且高音色还原度
+- **LongCat-AudioDiT**：本地扩散模型，零样本克隆
+- **OmniVoice**：支持 600+ 语言，独有的 Voice Design 功能
+
+所有引擎均支持 API 和本地模式（部分引擎仅支持本地），可在 `config.txt` 中一键切换。
 
 ### 6. 🌐 智能翻译与硬核字幕烧录
 不仅能一键提取精准字幕，还支持大模型智能翻译！AI 会先理解你的专业领域，进行非生硬的翻译，自动过滤“呃”、“啊”等语气词。
@@ -128,12 +134,12 @@ COS_REGION = ap-beijing
 COS_BUCKET_NAME = your_bucket_name_here
 
 # ---------------------------------------------------------
-# 5. TTS 双引擎配置 (用于 TTS 配音与声音克隆)
+# 5. TTS 四引擎配置 (用于 TTS 配音与声音克隆)
 # ---------------------------------------------------------
-# TTS_ENGINE 可选: indextts 或 qwen3-tts
+# TTS_ENGINE 可选: indextts, qwen3-tts, longcat-audiodit, omnivoice
 TTS_ENGINE = indextts
 
-# IndexTTS 配置
+# IndexTTS-2 配置 (支持精确情绪控制)
 INDEXTTS_MODE = local
 INDEXTTS_URL = https://api.siliconflow.cn/v1/audio/speech
 INDEXTTS_API_KEY = your_indextts_api_key_here
@@ -144,6 +150,14 @@ QWEN3TTS_MODE = local
 QWEN3TTS_URL = wss://dashscope.aliyuncs.com/api-ws/v1/inference
 QWEN3TTS_API_KEY = your_qwen3tts_api_key_here
 QWEN3TTS_MODEL_NAME = qwen3-tts
+
+# LongCat-AudioDiT 配置 (仅本地模式)
+LONGCAT_MODE = local
+LONGCAT_MODEL_DIR = models/LongCat-AudioDiT-1B
+
+# OmniVoice 配置 (支持 Voice Design 和非语言标签，仅本地模式)
+OMNIVOICE_MODE = local
+OMNIVOICE_MODEL_DIR = models/OmniVoice
 
 # 配音基准情绪参数（当没有特殊说明或大模型未调整时使用的默认值）
 TTS_DEFAULT_TEMPERATURE = 0.65
@@ -176,30 +190,165 @@ python scripts/extract_by_theme.py <你的长视频.mp4> "<你想提取的主题
 #### 🗣️ 魔法 D: 克隆你的专属声音
 把你的一段清晰录音交给 AI，给它起个名字：
 ```bash
+# 克隆到所有支持的引擎（推荐）
 python scripts/dubbing.py clone --audio <你的参考录音.mp3> --name "我的专属音色"
+
+# 仅克隆到指定引擎
+python scripts/dubbing.py clone --audio <你的参考录音.mp3> --name "我的专属音色" --models "omnivoice,indextts"
 ```
 
-#### 🎙️ 魔法 E: 用你的声音自动配音 (支持多线程极速生成与副语言标签)
+#### 🎙️ 魔法 E: 用你的声音自动配音 (支持多线程极速生成与多种控制方式)
 > ⚠️ **提示**：配音可能比较耗时，如果您是通过 Agent（如 Claude Code/OpenClaw）调用，建议将其放到后台执行，防止超时卡死。
 > - **Mac/Linux 环境**：首次运行前执行 `chmod +x scripts/async_run.sh`，调用时使用 `sh scripts/async_run.sh python ...`。
 > - **Windows 环境**：调用时使用 `scripts\async_run.bat python ...`。
 
-**🔥 新特性：精确情绪控制标签支持！**
-为了让 AI 说话更具表现力，你可以直接在配音文本中插入精确情绪标签，AI 会自动处理它们而**不会把标签当成文字读出来**。
+---
 
-**精确情绪控制标签**：
+## 🎛️ 音色控制方式大全
+
+Media Skill 支持三种音色控制方式，让你精准控制 AI 的声音表现：
+
+### 方式一：精确情绪控制标签 (IndexTTS-2 专属)
+
 支持格式：`[情绪名:强度值]`。例如：`[高兴:1.2]`, `[惊讶:0.8]`, `[悲伤:1.0]`。
+
 支持的情绪类型：`高兴`, `愤怒`, `悲伤`, `恐惧`, `反感`, `低落`, `惊讶`, `自然`。强度值范围推荐 `0.0 - 1.5`。
-*注意：手工传入的这些情绪标签会被直接解析为 IndexTTS 的底层 emo_vector 参数并生效，随后标签文字会被自动剥离，防止被合成出来。*
 
-*示例用法 (以 Mac/Linux 为例)：*
 ```bash
-sh scripts/async_run.sh python scripts/dubbing.py dub --text "[惊讶:1.2]哎哟喂！这效果太惊人了！" --voice "亮哥音色"
+sh scripts/async_run.sh python scripts/dubbing.py dub --text "[惊讶:1.2]哎哟喂！这效果太惊人了！" --voice "我的音色"
 ```
 
-# 或者，直接根据做好的字幕文件配音
-sh scripts/async_run.sh python scripts/dubbing.py dub --srt <你的字幕文件.srt> --out output.mp3
+### 方式二：Voice Design 自然语言描述 (OmniVoice 专属)
+
+通过自然语言描述你想要的声音特征，无需参考音频即可设计音色！
+
+**支持的属性**：
+- **性别**：`male`, `female`
+- **年龄**：`child`, `young`, `middle-aged`, `elderly`
+- **音调**：`very low pitch`, `low pitch`, `high pitch`, `very high pitch`
+- **风格**：`whisper`
+- **英语口音**：`American accent`, `British accent`, `Australian accent` 等
+- **中文方言**：`四川话`, `陕西话`, `粤语` 等
+
+**属性可自由组合，用逗号分隔**：
+
+```bash
+# 使用 --instruct 参数进行 Voice Design
+sh scripts/async_run.sh python scripts/dubbing.py dub \
+  --text "Hello, this is a demonstration of voice design." \
+  --instruct "female, low pitch, british accent, professional" \
+  --engine omnivoice
+
+# 中文方言示例
+sh scripts/async_run.sh python scripts/dubbing.py dub \
+  --text "大家好，今天给大家带来一个好消息。" \
+  --instruct "female, 四川话" \
+  --engine omnivoice
 ```
+
+### 方式三：非语言声音标签 (OmniVoice 专属)
+
+在文本中插入标签，让 AI 发出笑声、叹气、疑问等非语言声音：
+
+**支持的标签**：
+| 标签 | 效果 |
+|------|------|
+| `[laughter]` | 笑声 |
+| `[sigh]` | 叹气 |
+| `[confirmation-en]` | 英语肯定语气 |
+| `[question-en]` | 英语疑问语气 |
+| `[question-ah]` | "啊" 疑问语气 |
+| `[question-oh]` | "哦" 疑问语气 |
+| `[question-ei]` | "诶" 疑问语气 |
+| `[question-yi]` | "咦" 疑问语气 |
+| `[surprise-ah]` | "啊" 惊讶语气 |
+| `[surprise-oh]` | "哦" 惊讶语气 |
+| `[surprise-wa]` | "哇" 惊讶语气 |
+| `[surprise-yo]` | "哟" 惊讶语气 |
+| `[dissatisfaction-hnn]` | 不满语气 |
+
+```bash
+sh scripts/async_run.sh python scripts/dubbing.py dub \
+  --text "[laughter] You really got me! I didn't see that coming at all. [sigh] But seriously, that was impressive." \
+  --engine omnivoice
+```
+
+---
+
+## 📁 音色配置文件格式
+
+为每个音色创建配置文件，实现默认参数管理：
+
+**文件位置**：`data/voices/<音色名称>/config.md`
+
+**配置格式**：
+```markdown
+---
+name: "专业播音员"
+engine: omnivoice
+created: 2026-04-11
+---
+
+# Voice Configuration: 专业播音员
+
+## Instruct
+
+female, low pitch, british accent, professional tone
+
+## Compatible Engines
+
+- **omnivoice**: Full support (instruct + tags)
+- **indextts**: Clone from reference audio, emotion tags supported
+- **qwen3-tts**: Clone from reference audio only
+- **longcat-audiodit**: Clone from reference audio only
+
+## Notes
+
+This voice works best with English narration.
+```
+
+使用配置文件时，只需指定音色名称：
+```bash
+sh scripts/async_run.sh python scripts/dubbing.py dub \
+  --text "Your text here" \
+  --voice "专业播音员"
+# 系统会自动加载 config.md 中的 engine 和 instruct 设置
+```
+
+---
+
+## 📊 四引擎对比
+
+| 特性 | IndexTTS-2 | Qwen3-TTS | LongCat-AudioDiT | OmniVoice |
+|------|-----------|-----------|------------------|-----------|
+| **情绪控制** | ✅ 精确标签 | ❌ | ❌ | ❌ |
+| **Voice Design** | ❌ | ❌ | ❌ | ✅ 自然语言 |
+| **非语言标签** | ❌ | ❌ | ❌ | ✅ 13种标签 |
+| **API 模式** | ✅ | ✅ | ❌ | ❌ |
+| **本地模式** | ✅ | ✅ | ✅ | ✅ |
+| **语言支持** | 中文为主 | 中英文 | 中英文 | 600+ 语言 |
+
+---
+
+## 💡 使用示例汇总
+
+```bash
+# 1. 情绪控制 (IndexTTS-2)
+python scripts/dubbing.py dub --text "[高兴:1.2]今天真是太棒了！" --voice "我的音色" --engine indextts
+
+# 2. Voice Design (OmniVoice) - 无需克隆，直接设计
+python scripts/dubbing.py dub --text "Welcome to our show!" --instruct "male, deep voice, American accent" --engine omnivoice
+
+# 3. 非语言标签 (OmniVoice)
+python scripts/dubbing.py dub --text "[laughter] What a surprise! [sigh] I never expected this." --engine omnivoice
+
+# 4. 使用配置文件
+python scripts/dubbing.py dub --text "Your content here" --voice "专业播音员"
+
+# 5. 字幕配音
+python scripts/dubbing.py dub --srt subtitle.srt --voice "我的音色" --out output.mp3
+```
+
 *AI 会自动询问你想使用哪个克隆好的音色。对于长文本，程序会在 `output/` 目录下生成 `dubbing_status.json`，支持 Agent 或第三方应用异步查询生成进度。*
 
 #### 🌐 魔法 F: 智能配字幕与大模型翻译
