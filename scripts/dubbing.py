@@ -31,17 +31,17 @@ def split_text_into_paragraphs_and_sentences(text, max_len=150):
     return [[p] for p in paragraphs]
 
 def synthesize_worker(args):
-    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir, engine, config = args
+    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir, engine, config, instruct = args
     # 使用.wav扩展名避免soundfile写入MP3格式问题
     temp_audio_path = os.path.join(temp_dir, f"chunk_{idx}.wav")
     print(f"[{idx}] 正在合成: {text[:20]}...")
-    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config)
+        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
     if success:
         return idx, temp_audio_path
     else:
         return idx, None
 
-def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model=None, tts_params=None, engine="indextts", config=None):
+def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model=None, tts_params=None, engine="indextts", config=None, instruct=None):
     print("正在对长文本进行拆分...")
     paragraphs = split_text_into_paragraphs_and_sentences(text)
     
@@ -98,7 +98,7 @@ def dub_text(api_key, text, voice_id, output_audio_path, mode="api", model=None,
     results = {}
     completed_count = 0
     for chunk in flat_chunks:
-        task = (chunk["idx"], chunk["text"], api_key, voice_id, mode, model, tts_params, temp_dir, engine, config)
+        task = (chunk["idx"], chunk["text"], api_key, voice_id, mode, model, tts_params, temp_dir, engine, config, instruct)
         idx, path = synthesize_worker(task)
         results[idx] = path
         completed_count += 1
@@ -532,7 +532,7 @@ def clone_voice(api_key, ref_audio_path, text, voice_name, mode="api", model=Non
 
 
 
-def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model=None, tts_params=None, engine="indextts", config=None):
+def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model=None, tts_params=None, engine="indextts", config=None, instruct=None):
     if not config:
         config = load_config()
     if engine == "qwen3-tts":
@@ -549,9 +549,9 @@ def synthesize_speech(api_key, text, voice_id, output_path, mode="api", model=No
             config["INDEXTTS_API_KEY"] = api_key
 
     tts_engine = create_engine(config)
-    return tts_engine.synthesize(text, voice_id, output_path, tts_params)
+    return tts_engine.synthesize(text, voice_id, output_path, tts_params, instruct=instruct)
 
-def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api", model=None, tts_params=None, engine="indextts", config=None):
+def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api", model=None, tts_params=None, engine="indextts", config=None, instruct=None):
     print(f"解析字幕文件: {srt_path}")
     subs = parse_srt(srt_path)
     if not subs:
@@ -586,7 +586,7 @@ def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api"
         temp_audio_path = os.path.join(temp_dir, f"sub_{sub['index']}.mp3")
         
         # 合成语音
-        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config)
+    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
         if success:
             # 读取合成的音频
             seg_audio = AudioSegment.from_file(temp_audio_path)
@@ -629,6 +629,7 @@ def main():
     dub_parser.add_argument("--top_k", type=int, help="控制候选词范围，范围 10~50")
     dub_parser.add_argument("--top_p", type=float, help="平稳度控制，范围 0.5~0.95")
     dub_parser.add_argument("--max_text_tokens", type=int, help="单句最大长度，范围 50~150")
+    dub_parser.add_argument("--instruct", type=str, default=None, help="Voice design instruction for OmniVoice engine (e.g., 'female, low pitch, british accent'). Ignored by other engines with warning.")
     
     args = parser.parse_args()
     
@@ -733,9 +734,9 @@ def main():
                 print(f"使用本地库音色 {args.voice} -> {voice_id}")
                         
         if args.srt:
-            dub_subtitle(api_key, args.srt, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config)
+            dub_subtitle(api_key, args.srt, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config, instruct=args.instruct)
         elif args.text:
-            dub_text(api_key, args.text, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config)
+            dub_text(api_key, args.text, voice_id, args.out, mode=mode, tts_params=tts_params, engine=engine, config=config, instruct=args.instruct)
     else:
         parser.print_help()
 
