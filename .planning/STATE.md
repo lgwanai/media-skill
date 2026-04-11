@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 
 | Phase | Status | Plans | Progress |
 |-------|--------|-------|----------|
-| 1 | ○ Not started | 0/0 | 0% |
+| 1 | ◐ In progress | 1/3 | Plan 01 complete |
 | 2 | ○ Not started | 0/0 | 0% |
 | 3 | ○ Not started | 0/0 | 0% |
 | 4 | ○ Not started | 0/0 | 0% |
@@ -35,9 +35,9 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 
 | Decision | Status | Notes |
 |----------|--------|-------|
-| Pluggable engine architecture | Pending | Abstract base class for all TTS engines |
+| Pluggable engine architecture | In progress | ABC created (Plan 01); engine implementations next (Plan 02) |
 | Per-model feature serialization | Pending | Store features in model-specific formats |
-| Emotion mapping layer | Pending | Unified interface → model-specific translation |
+| Emotion mapping layer | In progress | EmotionParser utility extracted (Plan 01); per-engine mapping in Plan 02 |
 
 ---
-*Last updated: 2026-04-11 after project initialization*
+*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-01*
