@@ -4,7 +4,7 @@ import sys
 # 确保可以引入 scripts 目录下的其他模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils import load_config, create_openai_client, get_unified_output_dir
-from tts_engines import create_engine, EmotionParser, get_supported_engines, is_valid_engine
+from tts_engines import create_engine, EmotionParser, get_supported_engines, is_valid_engine, load_voice_config
 
 import json
 import argparse
@@ -35,7 +35,7 @@ def synthesize_worker(args):
     # 使用.wav扩展名避免soundfile写入MP3格式问题
     temp_audio_path = os.path.join(temp_dir, f"chunk_{idx}.wav")
     print(f"[{idx}] 正在合成: {text[:20]}...")
-        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
+    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
     if success:
         return idx, temp_audio_path
     else:
@@ -586,7 +586,7 @@ def dub_subtitle(api_key, srt_path, voice_id, output_audio_path=None, mode="api"
         temp_audio_path = os.path.join(temp_dir, f"sub_{sub['index']}.mp3")
         
         # 合成语音
-    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
+        success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
         if success:
             # 读取合成的音频
             seg_audio = AudioSegment.from_file(temp_audio_path)
@@ -688,6 +688,15 @@ def main():
                     args.voice = "IndexTeam/IndexTTS-2:alex"
                 else:
                     args.voice = "IndexTeam/IndexTTS-2:anna"
+        
+        voice_config = load_voice_config(args.voice)
+        if voice_config:
+            if voice_config.get("engine") and not hasattr(args, 'engine'):
+                engine = voice_config["engine"]
+                print(f"Using engine from voice config: {engine}")
+            if voice_config.get("instruct") and not args.instruct:
+                args.instruct = voice_config["instruct"]
+                print(f"Using instruct from voice config: {args.instruct}")
                     
         # 分析文本参数
         tts_params_override = {}
