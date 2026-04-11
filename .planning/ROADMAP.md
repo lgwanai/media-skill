@@ -155,13 +155,13 @@
 5. Warning issued when model doesn't support provided instruct/tags
 6. Each engine handles its own tag/instruct format natively
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 06-01-PLAN.md — Define voice control interface and config format
-- [ ] 06-02-PLAN.md — Implement OmniVoice instruct support
-- [ ] 06-03-PLAN.md — Add warning mechanism for unsupported engines
-- [ ] 06-04-PLAN.md — CLI integration and voice config loading
+- [x] 06-02-PLAN.md — Implement OmniVoice instruct support
+- [x] 06-03-PLAN.md — Add warning mechanism for unsupported engines
+- [x] 06-04-PLAN.md — CLI integration and voice config loading
 
 ---
 *Roadmap created: 2026-04-11*

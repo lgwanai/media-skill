@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** Users can clone any voice from a short audio sample and generate natural-sounding speech with emotion control, choosing from multiple TTS models.
-**Current focus:** Phase 6 — Voice control methods: instruct-based and tag-based synthesis control
+**Current focus:** Phase 6 complete — All phases finished
 
 ## Phase Status
 
@@ -16,7 +16,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | 3 | ✓ Complete | 2/2 | 100% |
 | 4 | ✓ Complete | - | 100% |
 | 5 | ✓ Complete | - | 100% |
-| 6 | ◐ In progress | 3/3 | Plans 01, 02, 03 complete |
+| 6 | ✓ Complete | 4/4 | 100% |
 
 ## Accumulated Context
 
@@ -55,6 +55,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | Instruct parameter optional | Complete | `instruct: str | None` for backward compatibility |
 | supports_instruct property | Complete | Default False in base class, OmniVoice overrides to True |
 | Instruct warning mechanism | Complete | _warn_unsupported_instruct() in base, all non-OmniVoice warn |
+| CLI --instruct integration | Complete | dub command accepts --instruct, passed through to engines |
+| Voice config loader | Complete | load_voice_config() for markdown config files |
 
 ---
-*Last updated: 2026-04-11 after completing Phase 6 Plan 03*
+*Last updated: 2026-04-11 after completing Phase 6*
