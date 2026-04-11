@@ -44,13 +44,12 @@ Plans:
 4. Model-specific dependencies are documented and installable
 5. Basic synthesis test produces audible output for both models
 
-**Plans:**
-- [ ] Research LongCat-AudioDiT API and create `scripts/tts_engines/longcat_audiodit_engine.py`
-- [ ] Research OmniVoice API and create `scripts/tts_engines/omnivoice_engine.py`
-- [ ] Add model loading logic with proper error handling and fallback messages
-- [ ] Implement voice cloning flow for both models (reference audio → model-specific features)
-- [ ] Implement synthesis flow for both models (text + voice → audio output)
-- [ ] Test both models with sample audio and text
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-01-PLAN.md — Implement LongCatAudioDiTEngine with TTSEngine interface
+- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-02-PLAN.md — Implement OmniVoiceEngine with TTSEngine interface
+- [ ] 02-integrate-longcat-audiodit-and-omnivoice-models-03-PLAN.md — Register engines in factory and update package exports
 
 ---
 
