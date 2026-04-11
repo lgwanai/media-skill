@@ -120,6 +120,49 @@ Documents available tags for tag-based control. Tags are **passed raw to the eng
 | `[surprise-yo]` | "Yo" surprise tone |
 | `[dissatisfaction-hnn]` | Dissatisfaction sound |
 
+### Pronunciation Control (OmniVoice only)
+
+OmniVoice supports pronunciation correction for both Chinese and English text.
+
+#### Chinese: Pinyin with Tone Numbers
+
+Use pinyin with tone numbers (1-5) to override default pronunciations:
+
+```
+这批货物打ZHE2出售后他严重SHE2本了，再也经不起ZHE1腾了。
+```
+
+**Tone number mapping:**
+- 1 = 阴平 (¯) - high level
+- 2 = 阳平 (ˊ) - rising
+- 3 = 上声 (ˇ) - falling-rising
+- 4 = 去声 (ˋ) - falling
+- 5 = 轻声 - neutral
+
+#### English: CMU Pronunciation Dictionary
+
+Use CMU phonemes (uppercase, in brackets) to override default pronunciations:
+
+```
+He plays the [B EY1 S] guitar while catching a [B AE1 S] fish.
+```
+
+**Common CMU phonemes:**
+
+| Symbol | IPA | Example | Symbol | IPA | Example |
+|--------|-----|---------|--------|-----|---------|
+| `AA` | /ɑ/ | b**o**ttle | `IH` | /ɪ/ | b**i**t |
+| `AE` | /æ/ | c**a**t | `IY` | /i/ | s**ee** |
+| `AH` | /ʌ/ | c**u**t | `OW` | /oʊ/ | g**o** |
+| `AO` | /ɔ/ | d**o**g | `OY` | /ɔɪ/ | b**oy** |
+| `AW` | /aʊ/ | h**ow** | `UH` | /ʊ/ | b**oo**k |
+| `AY` | /aɪ/ | l**i**ke | `UW` | /u/ | t**oo** |
+| `EH` | /ɛ/ | b**e**d | `B` | /b/ | **b**at |
+| `ER` | /ɜr/ | b**ir**d | `CH` | /tʃ/ | **ch**ip |
+| `EY` | /eɪ/ | s**ay** | `DH` | /ð/ | **th**is |
+
+**Stress markers:** `1` = primary stress, `2` = secondary stress, `0` = no stress
+
 ## How Instruct Is Used
 
 The `instruct` field from the config is passed to the `synthesize()` method's `instruct` parameter:
