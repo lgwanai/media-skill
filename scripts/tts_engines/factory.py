@@ -1,11 +1,11 @@
 """Engine factory for pluggable TTS architecture."""
 from typing import TYPE_CHECKING
 
-from scripts.tts_engines.base import TTSEngine
+from tts_engines.base import TTSEngine
 
 if TYPE_CHECKING:
-    from scripts.tts_engines.indextts_engine import IndexTTSEngine
-    from scripts.tts_engines.qwen3tts_engine import Qwen3TTSEngine
+    from tts_engines.indextts_engine import IndexTTSEngine
+    from tts_engines.qwen3tts_engine import Qwen3TTSEngine
 
 SUPPORTED_ENGINES = ["indextts", "qwen3-tts"]
 
@@ -25,10 +25,10 @@ def create_engine(config: dict) -> TTSEngine:
     engine = config.get("TTS_ENGINE", "indextts").strip().lower()
     
     if engine == "indextts":
-        from scripts.tts_engines.indextts_engine import IndexTTSEngine
+        from tts_engines.indextts_engine import IndexTTSEngine
         return IndexTTSEngine(config)
     elif engine == "qwen3-tts":
-        from scripts.tts_engines.qwen3tts_engine import Qwen3TTSEngine
+        from tts_engines.qwen3tts_engine import Qwen3TTSEngine
         return Qwen3TTSEngine(config)
     else:
         raise ValueError(f"Unsupported TTS engine: '{engine}'. Supported: {', '.join(SUPPORTED_ENGINES)}")
