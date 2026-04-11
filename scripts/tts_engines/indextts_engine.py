@@ -1,6 +1,5 @@
 """IndexTTS-2 engine implementation for the pluggable TTS architecture."""
 
-import json
 import os
 import sys
 import threading
@@ -31,6 +30,10 @@ class IndexTTSEngine(TTSEngine):
     @property
     def name(self) -> str:
         return "indextts"
+
+    @property
+    def supports_emotion(self) -> bool:
+        return True
 
     def load_model(self) -> None:
         """Load the IndexTTS-2 local model.
@@ -128,23 +131,8 @@ class IndexTTSEngine(TTSEngine):
             shutil.copy2(ref_audio, ref_audio_path)
 
         mode = config.get("INDEXTTS_MODE", "api").strip().lower()
-        model_name = config.get("INDEXTTS_MODEL_NAME", "IndexTeam/IndexTTS-2")
-
-        meta = {
-            "name": voice_name,
-            "text": text,
-            "mode": mode,
-            "engine": "indextts",
-            "local_audio": ref_audio_path,
-        }
 
         if mode == "local":
-            with open(os.path.join(voice_path, "meta.json"), "w", encoding="utf-8") as vf:
-                json.dump(meta, vf, ensure_ascii=False, indent=2)
-
-            print(f"音色已保存到本地样本库目录 {voice_path} (本地模式)")
-
-            # Extract and persist voice features
             print("正在提取并持久化音色特征，以提升后续生成速度...")
             try:
                 self.load_model()
@@ -161,8 +149,8 @@ class IndexTTSEngine(TTSEngine):
 
             return "local:" + ref_audio_path
 
-        # API mode
         api_key = config.get("INDEXTTS_API_KEY", "")
+        model_name = config.get("INDEXTTS_MODEL_NAME", "IndexTeam/IndexTTS-2")
         url = config.get(
             "INDEXTTS_URL", "https://api.siliconflow.cn/v1/audio/speech"
         ).replace("/audio/speech", "/uploads/audio/voice")
@@ -176,15 +164,9 @@ class IndexTTSEngine(TTSEngine):
             result = response.json()
             voice_uri = result.get("uri")
             print(f"声音克隆成功！音色 ID (URI): {voice_uri}")
-
-            meta["uri"] = voice_uri
-            with open(os.path.join(voice_path, "meta.json"), "w", encoding="utf-8") as vf:
-                json.dump(meta, vf, ensure_ascii=False, indent=2)
-            print(f"音色已保存到本地样本库目录 {voice_path}")
             return "api:" + voice_uri
         else:
-            print(f"克隆失败: {response.status_code} {response.text}")
-            sys.exit(1)
+            raise RuntimeError(f"克隆失败: {response.status_code} {response.text}")
 
     def synthesize(
         self,

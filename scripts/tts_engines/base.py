@@ -21,6 +21,12 @@ class TTSEngine(ABC):
         """
         self.config = config
 
+    @property
+    @abstractmethod
+    def supports_emotion(self) -> bool:
+        """Return True if this engine supports emotion control via emo_vector."""
+        ...
+
     @abstractmethod
     def load_model(self) -> None:
         """Load the TTS model (local model weights or API client setup).

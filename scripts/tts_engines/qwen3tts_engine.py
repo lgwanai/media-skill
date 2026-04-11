@@ -2,7 +2,6 @@
 
 import json
 import os
-import sys
 import threading
 
 import numpy as np
@@ -33,6 +32,10 @@ class Qwen3TTSEngine(TTSEngine):
     @property
     def name(self) -> str:
         return "qwen3-tts"
+
+    @property
+    def supports_emotion(self) -> bool:
+        return False
 
     def load_model(self) -> None:
         """Load the Qwen3-TTS local model.
@@ -95,20 +98,6 @@ class Qwen3TTSEngine(TTSEngine):
 
             shutil.copy2(ref_audio, ref_audio_path)
 
-        mode = self.config.get("QWEN3TTS_MODE", "api").strip().lower()
-
-        meta = {
-            "name": voice_name,
-            "text": text,
-            "mode": mode,
-            "engine": "qwen3-tts",
-            "local_audio": ref_audio_path,
-        }
-
-        with open(os.path.join(voice_path, "meta.json"), "w", encoding="utf-8") as vf:
-            json.dump(meta, vf, ensure_ascii=False, indent=2)
-
-        print(f"音色已保存到本地样本库目录 {voice_path} (Qwen3-TTS)")
         return "qwen:" + ref_audio_path
 
     def synthesize(

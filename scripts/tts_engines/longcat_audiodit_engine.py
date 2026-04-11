@@ -4,9 +4,7 @@ Local-only zero-shot voice cloning using diffusion-based TTS.
 No emotion control support - strips emotion tags from text.
 """
 
-import json
 import os
-import sys
 import threading
 
 from .base import EmotionParser, TTSEngine
@@ -30,7 +28,11 @@ class LongCatAudioDiTEngine(TTSEngine):
     @property
     def name(self) -> str:
         return "longcat-audiodit"
-    
+
+    @property
+    def supports_emotion(self) -> bool:
+        return False
+
     def load_model(self) -> None:
         with self._model_lock:
             if self._model is not None:
@@ -69,17 +71,6 @@ class LongCatAudioDiTEngine(TTSEngine):
         
         import shutil
         shutil.copy2(ref_audio, ref_audio_path)
-        
-        meta = {
-            "name": voice_name,
-            "text": text,
-            "engine": "longcat-audiodit",
-            "local_audio": ref_audio_path,
-            "mode": "local"
-        }
-        
-        with open(os.path.join(voice_dir, "meta.json"), "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
         
         return f"longcat:{ref_audio_path}"
     

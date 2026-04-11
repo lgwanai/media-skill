@@ -313,6 +313,7 @@ def auto_transcribe_audio(audio_path, config):
         from funasr import AutoModel
     except ImportError:
         print("缺少 funasr 库，无法进行 ASR 识别。请先执行 pip install funasr")
+        import sys
         sys.exit(1)
         
     config = load_config()
@@ -431,41 +432,100 @@ def migrate_old_voices_json():
         except Exception as e:
             print(f"迁移旧版 voices.json 失败: {e}")
 
-def clone_voice(api_key, ref_audio_path, text, voice_name, mode="api", model=None, config=None, engine="indextts"):
+def clone_voice(api_key, ref_audio_path, text, voice_name, mode="api", model=None, config=None, engine="indextts", target_models=None):
     if not config:
         config = load_config()
     if not text:
-        text = auto_transcribe_audio(audio_path, config)
+        text = auto_transcribe_audio(ref_audio_path, config)
         if not text:
             print("自动识别文本为空，无法进行克隆。")
             sys.exit(1)
 
-    # 准备保存的目录结构
     voices_dir = get_voices_dir()
     voice_path = os.path.join(voices_dir, voice_name)
     os.makedirs(voice_path, exist_ok=True)
 
-    # 统一转换音频格式为 wav，并保存到标准库中
-    ref_audio_path = os.path.join(voice_path, "ref_audio.wav")
+    saved_audio_path = os.path.join(voice_path, "ref_audio.wav")
+    need_reextract = True
+
+    if os.path.exists(saved_audio_path):
+        import hashlib
+        with open(ref_audio_path, "rb") as f:
+            new_hash = hashlib.md5(f.read()).hexdigest()
+        with open(saved_audio_path, "rb") as f:
+            old_hash = hashlib.md5(f.read()).hexdigest()
+        
+        if new_hash == old_hash:
+            need_reextract = False
+            print("检测到相同参考音频，跳过特征重新提取")
+
     try:
-        audio = AudioSegment.from_file(audio_path)
-        audio.export(ref_audio_path, format="wav")
+        audio = AudioSegment.from_file(ref_audio_path)
+        audio.export(saved_audio_path, format="wav")
     except Exception as e:
         print(f"音频转换失败，尝试直接拷贝: {e}")
         import shutil
-        shutil.copy2(audio_path, ref_audio_path)
+        shutil.copy2(ref_audio_path, saved_audio_path)
+        need_reextract = True
+
+    if target_models is None:
+        target_models = get_supported_engines()
+
+    meta_path = os.path.join(voice_path, "meta.json")
+    existing_compatible_models = []
+    
+    if os.path.exists(meta_path) and not need_reextract:
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                existing_meta = json.load(f)
+                existing_compatible_models = existing_meta.get("compatible_models", [])
+        except Exception:
+            pass
+
+    compatible_models = list(set(existing_compatible_models))
+
+    for model_name in target_models:
+        if not is_valid_engine(model_name):
+            print(f"警告: 跳过不支持的模型 '{model_name}'")
+            continue
+
+        if model_name in compatible_models and not need_reextract:
+            print(f"✓ {model_name} 特征已存在，跳过")
+            continue
+
+        model_config = config.copy()
+        model_config["TTS_ENGINE"] = model_name
+
+        feature_cache_path = os.path.join(voice_path, f"ref_audio_{model_name.replace('-', '_')}.pt")
+        if os.path.exists(feature_cache_path):
+            os.remove(feature_cache_path)
+
+        try:
+            tts_engine = create_engine(model_config)
+            tts_engine.clone_voice(saved_audio_path, text, voice_name)
+            if model_name not in compatible_models:
+                compatible_models.append(model_name)
+            print(f"✓ {model_name} 特征提取完成")
+        except Exception as e:
+            print(f"✗ {model_name} 特征提取失败: {e}")
 
     meta = {
         "name": voice_name,
         "text": text,
         "mode": mode,
-        "original_audio": audio_path,
-        "local_audio": ref_audio_path,
-        "engine": engine
+        "original_audio": ref_audio_path,
+        "local_audio": saved_audio_path,
+        "engine": engine,
+        "compatible_models": compatible_models,
+        "created_at": __import__('datetime').datetime.now().isoformat(),
     }
 
-    tts_engine = create_engine(config)
-    return tts_engine.clone_voice(ref_audio_path, text, voice_name)
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    print(f"\n音色 '{voice_name}' 已保存到 {voice_path}")
+    print(f"兼容模型: {', '.join(compatible_models)}")
+    return voice_name
 
 
 # ========================================================
@@ -555,6 +615,7 @@ def main():
     clone_parser.add_argument("--audio", required=True, help="参考音频文件路径")
     clone_parser.add_argument("--text", help="参考音频中的文字内容（可选，如果不填则自动使用 ASR 识别）")
     clone_parser.add_argument("--name", required=True, help="自定义音色名称（用于后续配音任务）")
+    clone_parser.add_argument("--models", help="目标模型列表，逗号分隔 (如 indextts,qwen3-tts,longcat-audiodit)。默认为当前配置的引擎")
     
     # dub 子命令
     dub_parser = subparsers.add_parser("dub", help="基于字幕文件与本地样本库生成对齐的配音文件")
@@ -594,7 +655,10 @@ def main():
             sys.exit(1)
         
     if args.command == "clone":
-        clone_voice(api_key, args.audio, args.text, args.name, mode=mode, config=config, engine=engine)
+        target_models = None
+        if args.models:
+            target_models = [m.strip().lower() for m in args.models.split(",")]
+        clone_voice(api_key, args.audio, args.text, args.name, mode=mode, config=config, engine=engine, target_models=target_models)
     elif args.command == "dub":
         if not args.srt and not args.text and not args.text_file:
             print("错误: 必须提供 --srt、--text 或 --text-file 其中之一")
