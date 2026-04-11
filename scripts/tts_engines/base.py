@@ -27,6 +27,12 @@ class TTSEngine(ABC):
         """Return True if this engine supports emotion control via emo_vector."""
         ...
 
+    @property
+    @abstractmethod
+    def supports_instruct(self) -> bool:
+        """Return True if this engine supports instruct-based voice design."""
+        ...
+
     @abstractmethod
     def load_model(self) -> None:
         """Load the TTS model (local model weights or API client setup).
@@ -61,6 +67,7 @@ class TTSEngine(ABC):
         voice_id: str,
         output_path: str,
         tts_params: dict | None = None,
+        instruct: str | None = None,
     ) -> bool:
         """Synthesize speech from text using the specified voice.
 
@@ -70,6 +77,9 @@ class TTSEngine(ABC):
             output_path: File path where the generated audio will be saved.
             tts_params: Optional engine-specific parameters (e.g., temperature,
                        top_k, emo_vector for emotion control).
+            instruct: Optional voice design instruction (e.g., "female, low pitch,
+                     british accent"). Only supported by OmniVoice; other engines
+                     will ignore this parameter and issue a warning.
 
         Returns:
             True if synthesis succeeded and audio was written to output_path,
