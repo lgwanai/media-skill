@@ -6,8 +6,10 @@ from tts_engines.base import TTSEngine
 if TYPE_CHECKING:
     from tts_engines.indextts_engine import IndexTTSEngine
     from tts_engines.qwen3tts_engine import Qwen3TTSEngine
+    from tts_engines.longcat_audiodit_engine import LongCatAudioDiTEngine
+    from tts_engines.omnivoice_engine import OmniVoiceEngine
 
-SUPPORTED_ENGINES = ["indextts", "qwen3-tts"]
+SUPPORTED_ENGINES = ["indextts", "qwen3-tts", "longcat-audiodit", "omnivoice"]
 
 
 def create_engine(config: dict) -> TTSEngine:
@@ -30,6 +32,12 @@ def create_engine(config: dict) -> TTSEngine:
     elif engine == "qwen3-tts":
         from tts_engines.qwen3tts_engine import Qwen3TTSEngine
         return Qwen3TTSEngine(config)
+    elif engine == "longcat-audiodit":
+        from tts_engines.longcat_audiodit_engine import LongCatAudioDiTEngine
+        return LongCatAudioDiTEngine(config)
+    elif engine == "omnivoice":
+        from tts_engines.omnivoice_engine import OmniVoiceEngine
+        return OmniVoiceEngine(config)
     else:
         raise ValueError(f"Unsupported TTS engine: '{engine}'. Supported: {', '.join(SUPPORTED_ENGINES)}")
 
