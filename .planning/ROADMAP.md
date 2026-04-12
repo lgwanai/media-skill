@@ -163,6 +163,21 @@ Plans:
 - [x] 06-03-PLAN.md — Add warning mechanism for unsupported engines
 - [x] 06-04-PLAN.md — CLI integration and voice config loading
 
+### Phase 7: ASR相关能力底层支持Qwen3-ASR方案，支持配置文件进行切换，采用双模型协同架构：Qwen3-ASR负责实时语音转文字（低延迟），Qwen3-ForcedAligner负责字级毫秒时间戳对齐（高精度）
+
+**Goal:** Create pluggable ASR engine architecture with FunASR and Qwen3-ASR backends, following TTSEngine pattern from Phase 1-6. Enable configuration-based engine switching with consistent output format.
+
+**Depends on:** Phase 6
+**Plans:** 4 plans in 3 waves
+
+**Requirements:** ASR-01, ASR-02, ASR-03, ASR-04, ASR-05
+
+Plans:
+- [ ] 07-01-PLAN.md — Create ASR engine abstraction layer (base class, factory, config defaults)
+- [ ] 07-02-PLAN.md — Create FunASR engine adapter wrapping existing code
+- [ ] 07-03-PLAN.md — Implement Qwen3-ASR engine with dual-model architecture
+- [ ] 07-04-PLAN.md — Refactor transcribe.py to use pluggable architecture
+
 ---
 *Roadmap created: 2026-04-11*
-*Last updated: 2026-04-11 after planning Phase 6*
+*Last updated: 2026-04-12 after planning Phase 7*

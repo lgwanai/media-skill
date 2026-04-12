@@ -65,6 +65,14 @@
 | Modifying existing IndexTTS-2/Qwen3-TTS core behavior | Only extend, don't break existing functionality |
 | Training custom models from scratch | Focus on inference/integration, not training |
 
+### ASR Engine (Phase 7)
+
+- [ ] **ASR-01**: ASR engine abstraction layer with base class and factory pattern
+- [ ] **ASR-02**: FunASR engine adapter preserving existing functionality
+- [ ] **ASR-03**: Qwen3-ASR engine implementation with dual-model architecture (ASR + ForcedAligner)
+- [ ] **ASR-04**: Configuration support for ASR engine switching (funasr, qwen3-asr)
+- [ ] **ASR-05**: transcribe.py refactored to use pluggable architecture
+
 ## Traceability
 
 | Requirement | Phase | Status |
@@ -91,12 +99,18 @@
 | PERF-01 | Phase 4 | Pending |
 | PERF-02 | Phase 4 | Pending |
 | PERF-03 | Phase 1 | Complete |
+| CTRL-02 | Phase 6 | Complete |
+| ASR-01 | Phase 7 | Pending |
+| ASR-02 | Phase 7 | Pending |
+| ASR-03 | Phase 7 | Pending |
+| ASR-04 | Phase 7 | Pending |
+| ASR-05 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total
-- Mapped to phases: 21
+- v1 requirements: 26 total (21 original + 5 ASR)
+- Mapped to phases: 26
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 after completing 01-refactor-tts-engine-architecture-02*
+*Last updated: 2026-04-12 after adding Phase 7 requirements*
