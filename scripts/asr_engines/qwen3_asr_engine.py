@@ -17,6 +17,7 @@ class Qwen3ASREngine(ASREngine):
         super().__init__(config)
         self._mode = config.get("QWEN3ASR_MODE", "local")
         self._backend = config.get("QWEN3ASR_BACKEND", "transformers")
+        self._max_new_tokens = int(config.get("QWEN3ASR_MAX_NEW_TOKENS", 256))
     
     @property
     def name(self) -> str:
@@ -29,6 +30,32 @@ class Qwen3ASREngine(ASREngine):
     @property
     def supports_timestamps(self) -> bool:
         return True
+
+    def _resolve_device_and_dtype(self) -> tuple[str, torch.dtype]:
+        configured_device = self.config.get("QWEN3ASR_DEVICE", "cuda:0").strip()
+
+        if configured_device.startswith("cuda"):
+            if torch.cuda.is_available():
+                return configured_device, torch.bfloat16
+            if torch.backends.mps.is_available():
+                return "mps", torch.float16
+            return "cpu", torch.float32
+
+        if configured_device == "mps":
+            if torch.backends.mps.is_available():
+                return "mps", torch.float16
+            if torch.cuda.is_available():
+                return "cuda:0", torch.bfloat16
+            return "cpu", torch.float32
+
+        if configured_device == "cpu":
+            return "cpu", torch.float32
+
+        if torch.cuda.is_available():
+            return "cuda:0", torch.bfloat16
+        if torch.backends.mps.is_available():
+            return "mps", torch.float16
+        return "cpu", torch.float32
     
     def load_model(self) -> None:
         """Load Qwen3-ASR model with ForcedAligner."""
@@ -40,35 +67,34 @@ class Qwen3ASREngine(ASREngine):
         
         model_name = self.config.get("QWEN3ASR_MODEL", "Qwen/Qwen3-ASR-1.7B")
         aligner_name = self.config.get("QWEN3ASR_ALIGNER_MODEL", "Qwen/Qwen3-ForcedAligner-0.6B")
-        device = self.config.get("QWEN3ASR_DEVICE", "cuda:0")
-        max_new_tokens = int(self.config.get("QWEN3ASR_MAX_NEW_TOKENS", 256))
-        
+        device, dtype = self._resolve_device_and_dtype()
+
         from qwen_asr import Qwen3ASRModel
         
         if self._backend == "vllm":
             self._model = Qwen3ASRModel.LLM(
                 model=model_name,
                 gpu_memory_utilization=0.7,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=self._max_new_tokens,
                 forced_aligner=aligner_name,
                 forced_aligner_kwargs=dict(
-                    dtype=torch.bfloat16,
+                    dtype=dtype,
                     device_map=device,
                 ),
             )
         else:
             self._model = Qwen3ASRModel.from_pretrained(
                 model_name,
-                dtype=torch.bfloat16,
+                dtype=dtype,
                 device_map=device,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=self._max_new_tokens,
                 forced_aligner=aligner_name,
                 forced_aligner_kwargs=dict(
-                    dtype=torch.bfloat16,
+                    dtype=dtype,
                     device_map=device,
                 ),
             )
-    
+
     def transcribe(
         self,
         audio_path: str,
@@ -111,6 +137,7 @@ class Qwen3ASREngine(ASREngine):
                     text=ts.text,
                     start_time=ts.start_time,
                     end_time=ts.end_time,
+                    speaker=None,
                 )
                 for ts in result.time_stamps
             ]

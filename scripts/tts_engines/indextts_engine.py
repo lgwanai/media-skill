@@ -58,7 +58,7 @@ class IndexTTSEngine(TTSEngine):
                 from modelscope import snapshot_download
             except ImportError:
                 print("缺少 modelscope 库，请执行: pip install modelscope")
-                sys.exit(1)
+                raise RuntimeError("缺少 modelscope 库")
 
             print("正在检查/下载 IndexTTS 本地模型 (首次运行可能需要一些时间)...")
             model_base = self.config.get("MODEL_DIR")
@@ -72,12 +72,7 @@ class IndexTTSEngine(TTSEngine):
                 import indextts
             except ImportError:
                 print("错误: 未找到 indextts。请先安装 IndexTTS 运行环境。")
-                print("安装参考:")
-                print("  git clone https://github.com/index-tts/index-tts.git")
-                print("  cd index-tts")
-                print("  pip install -r requirements.txt")
-                print("  pip install -e .")
-                sys.exit(1)
+                raise RuntimeError("未找到 indextts 库")
 
             try:
                 import torch
@@ -104,7 +99,7 @@ class IndexTTSEngine(TTSEngine):
                     )
                 except Exception as e:
                     print(f"本地模型加载失败: {e}")
-                    sys.exit(1)
+                    raise RuntimeError(f"IndexTTS 模型加载失败: {e}")
 
     def clone_voice(
         self, ref_audio: str, text: str, voice_name: str

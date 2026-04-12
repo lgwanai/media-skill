@@ -177,6 +177,7 @@ class FunASREngine(ASREngine):
                     text=sent_text,
                     start_time=sent.get("start", 0) / 1000.0,
                     end_time=sent.get("end", 0) / 1000.0,
+                    speaker=spk,
                 ))
         
         full_text = "\n".join(text_parts)

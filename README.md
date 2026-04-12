@@ -164,6 +164,28 @@ TTS_DEFAULT_TEMPERATURE = 0.65
 TTS_DEFAULT_TOP_K = 40
 TTS_DEFAULT_TOP_P = 0.8
 TTS_DEFAULT_MAX_TEXT_TOKENS = 130
+
+# ---------------------------------------------------------
+# 6. ASR 配置
+# ---------------------------------------------------------
+# ASR_ENGINE 可选: funasr, qwen3-asr
+ASR_ENGINE = qwen3-asr
+
+# FunASR 配置（用于 diarization 补充）
+FUNASR_PARAFORMER_MODEL = iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch
+FUNASR_VAD_MODEL = damo/speech_fsmn_vad_zh-cn-16k-common-pytorch
+FUNASR_PUNC_MODEL = damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
+FUNASR_SPK_MODEL = iic/speech_eres2net_sv_zh-cn_16k-common
+
+# Qwen3-ASR 配置
+QWEN3ASR_MODE = local
+QWEN3ASR_MODEL = Qwen/Qwen3-ASR-1.7B
+QWEN3ASR_ALIGNER_MODEL = Qwen/Qwen3-ForcedAligner-0.6B
+QWEN3ASR_DEVICE = cuda:0
+QWEN3ASR_BACKEND = transformers
+QWEN3ASR_MAX_NEW_TOKENS = 256
+QWEN3ASR_ENABLE_DIARIZATION = true
+QWEN3ASR_MAX_SPEAKERS = 4
 ```
 </details>
 
@@ -174,6 +196,18 @@ TTS_DEFAULT_MAX_TEXT_TOKENS = 130
 python scripts/transcribe.py <你的视频或音频文件.mp4>
 ```
 *完成后，你会在 `output/<文件名_MD5>/` 文件夹里找到生成好的 `transcription.json`、SRT 字幕和纯文本稿。系统会自动根据文件 MD5 进行缓存，重复运行秒级跳过！*
+
+**当前字幕输出规则：**
+- `transcription.srt`：输出**标准 SRT 格式**，可直接导入剪映、Premiere、Final Cut 等视频编辑软件。
+- `transcription.json`：
+  - `sentence_info`：按**语义完整句**聚合后的字幕片段，适合剪辑与上屏。
+  - `char_level_info`：保留**字级毫秒时间戳**，适合做精细对齐、后处理或二次分析。
+- 当检测到**多人发言**时，会自动在字幕文本中加入 `SPEAKER_00` / `SPEAKER_01` 等发言人标识；单人发言时默认输出纯文本字幕。
+
+**Qwen3-ASR 多人发言说明：**
+- `Qwen3-ASR` 负责高质量识别与毫秒级对齐。
+- 当前工程中的说话人分离采用**融合方案**：`Qwen3-ASR` 产出文本与时间戳，`FunASR` 产出 diarization 结果，再自动回填 `SPEAKER_00 / 01` 标签。
+- 这不会生成每位说话人的独立音轨，但会输出“**谁在什么时间说了哪句话**”。
 
 #### ✂️ 魔法 B: 全自动智能剪辑 (去除废话)
 *请先执行上面的魔法 A 生成字幕，然后再执行剪辑：*

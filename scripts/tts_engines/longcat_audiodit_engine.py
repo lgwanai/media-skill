@@ -34,19 +34,25 @@ class LongCatAudioDiTEngine(TTSEngine):
         return False
 
     def load_model(self) -> None:
+        if self._model is not None:
+            return
+            
         with self._model_lock:
             if self._model is not None:
                 return
-            
+                
             try:
-                import torch
+                import sys
+                sys.path.insert(0, os.path.join(os.path.expanduser("~/.models"), "LongCat-AudioDiT"))
+                from audiodit import AudioDiTModel
                 from transformers import AutoTokenizer
+                import torch
+                
+                device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+                dtype = torch.bfloat16 if device == "cuda" else torch.float32
                 
                 model_name = self.config.get("LONGCAT_MODEL_NAME", "meituan-longcat/LongCat-AudioDiT-1B")
-                
-                from audiodit import AudioDiTModel
-                device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-                dtype = torch.float16 if device == "cuda" else torch.float32
+                print(f"正在加载 LongCat-AudioDiT 本地模型 ({model_name}) 到 {device}...")
                 
                 self._model = AudioDiTModel.from_pretrained(model_name).to(device=device, dtype=dtype)
                 self._tokenizer = AutoTokenizer.from_pretrained(self._model.config.text_encoder_model)
@@ -70,7 +76,8 @@ class LongCatAudioDiTEngine(TTSEngine):
         ref_audio_path = os.path.join(voice_dir, "ref_audio.wav")
         
         import shutil
-        shutil.copy2(ref_audio, ref_audio_path)
+        if os.path.abspath(ref_audio) != os.path.abspath(ref_audio_path):
+            shutil.copy2(ref_audio, ref_audio_path)
         
         return f"longcat:{ref_audio_path}"
     
@@ -87,14 +94,33 @@ class LongCatAudioDiTEngine(TTSEngine):
             import librosa
             import soundfile as sf
             import os
+            import json
+            import numpy as np
+            import re
             
-            steps = tts_params.get("steps", self.config.get("LONGCAT_STEPS", 16)) if tts_params else self.config.get("LONGCAT_STEPS", 16)
-            cfg_strength = tts_params.get("cfg_strength", self.config.get("LONGCAT_CFG_STRENGTH", 4.0)) if tts_params else self.config.get("LONGCAT_CFG_STRENGTH", 4.0)
+            def normalize_text(t):
+                t = t.lower()
+                t = re.sub(r'["“”‘’]', ' ', t)
+                t = re.sub(r'\s+', ' ', t)
+                return t
+
+            def approx_duration_from_text(t, max_duration=30.0):
+                EN_DUR_PER_CHAR = 0.082
+                ZH_DUR_PER_CHAR = 0.21
+                t = re.sub(r"\s+", "", t)
+                num_zh = num_en = num_other = 0
+                for c in t:
+                    if "\u4e00" <= c <= "\u9fff":
+                        num_zh += 1
+                    elif c.isalpha():
+                        num_en += 1
+                    else:
+                        num_other += 1
+                dur = num_zh * ZH_DUR_PER_CHAR + num_en * EN_DUR_PER_CHAR + num_other * 0.1
+                return min(max(dur, 1.0), max_duration)
             
-            inputs = self._tokenizer([clean_text], padding="longest", return_tensors="pt")
-            inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
-            
-            duration = max(16, int(len(clean_text) * 2.5))
+            steps = int(tts_params.get("steps", self.config.get("LONGCAT_STEPS", 16)) if tts_params else self.config.get("LONGCAT_STEPS", 16))
+            cfg_strength = float(tts_params.get("cfg_strength", self.config.get("LONGCAT_CFG_STRENGTH", 4.0)) if tts_params else self.config.get("LONGCAT_CFG_STRENGTH", 4.0))
             
             if voice_id and voice_id.startswith("longcat:"):
                 ref_audio_path = voice_id[8:]
@@ -102,11 +128,56 @@ class LongCatAudioDiTEngine(TTSEngine):
                 ref_audio_path = voice_id
             else:
                 ref_audio_path = None
+                
+            prompt_text = ""
+            if ref_audio_path:
+                meta_path = os.path.join(os.path.dirname(ref_audio_path), "meta.json")
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                            prompt_text = meta.get("text", "")
+                    except Exception:
+                        pass
+                        
+            text_norm = normalize_text(clean_text)
+            if prompt_text:
+                prompt_text_norm = normalize_text(prompt_text)
+                full_text = f"{prompt_text_norm} {text_norm}"
+            else:
+                full_text = text_norm
+            
+            inputs = self._tokenizer([full_text], padding="longest", return_tensors="pt")
+            inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
             
             prompt_audio = None
+            prompt_dur = 0
+            sr = self._model.config.sampling_rate
+            full_hop = self._model.config.latent_hop
+            max_duration_frames = int(self._model.config.max_wav_duration * sr // full_hop)
+            
             if ref_audio_path and os.path.exists(ref_audio_path):
-                audio, sr = librosa.load(ref_audio_path, sr=24000, mono=True)
-                prompt_audio = torch.from_numpy(audio).unsqueeze(0).to(self._model.device)
+                import torch.nn.functional as F
+                audio, _ = librosa.load(ref_audio_path, sr=sr, mono=True)
+                # Pad according to LongCat's inference logic
+                off = 3
+                wav = torch.from_numpy(audio).unsqueeze(0).to(self._model.device)
+                if wav.shape[-1] % full_hop != 0:
+                    wav = F.pad(wav, (0, full_hop - wav.shape[-1] % full_hop))
+                wav = F.pad(wav, (0, full_hop * off))
+                prompt_audio = wav
+                _, prompt_dur = self._model.encode_prompt_audio(prompt_audio)
+                
+            prompt_time = prompt_dur * full_hop / sr
+            dur_sec = approx_duration_from_text(text_norm, max_duration=self._model.config.max_wav_duration - prompt_time)
+            
+            if prompt_text:
+                approx_pd = approx_duration_from_text(prompt_text_norm, max_duration=self._model.config.max_wav_duration)
+                ratio = np.clip(prompt_time / approx_pd, 1.0, 1.5) if approx_pd > 0 else 1.0
+                dur_sec = dur_sec * ratio
+                
+            duration = int(dur_sec * sr // full_hop)
+            duration = min(duration + prompt_dur, max_duration_frames)
             
             with torch.no_grad():
                 output = self._model(
@@ -122,7 +193,7 @@ class LongCatAudioDiTEngine(TTSEngine):
             waveform = output.waveform.squeeze().cpu().numpy()
             
             os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
-            sf.write(output_path, waveform, 24000)
+            sf.write(output_path, waveform, sr)
             
             return True
     

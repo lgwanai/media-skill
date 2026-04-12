@@ -25,6 +25,7 @@ class OmniVoiceEngine(TTSEngine):
         self._model = None
         self._model_lock = threading.Lock()
         self._infer_lock = threading.Lock()
+        self._forced_device = None
     
     @property
     def name(self) -> str:
@@ -48,7 +49,7 @@ class OmniVoiceEngine(TTSEngine):
                 
                 model_name = self.config.get("OMNIVOICE_MODEL_NAME", "k2-fsa/OmniVoice")
                 
-                device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+                device = self._forced_device or ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
                 dtype = torch.float16 if device == "cuda" else torch.float32
                 
                 from omnivoice import OmniVoice
@@ -77,7 +78,8 @@ class OmniVoiceEngine(TTSEngine):
         ref_audio_path = os.path.join(voice_dir, "ref_audio.wav")
         
         import shutil
-        shutil.copy2(ref_audio, ref_audio_path)
+        if os.path.abspath(ref_audio) != os.path.abspath(ref_audio_path):
+            shutil.copy2(ref_audio, ref_audio_path)
         
         return f"omnivoice:{ref_audio_path}"
     
@@ -101,8 +103,17 @@ class OmniVoiceEngine(TTSEngine):
             import torchaudio
             import os
 
-            num_step = tts_params.get("num_step", self.config.get("OMNIVOICE_NUM_STEP", 32)) if tts_params else self.config.get("OMNIVOICE_NUM_STEP", 32)
-            guidance_scale = tts_params.get("guidance_scale", self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)) if tts_params else self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)
+            raw_num_step = tts_params.get("num_step", self.config.get("OMNIVOICE_NUM_STEP", 32)) if tts_params else self.config.get("OMNIVOICE_NUM_STEP", 32)
+            try:
+                num_step = int(raw_num_step)
+            except Exception:
+                num_step = 32
+
+            raw_guidance_scale = tts_params.get("guidance_scale", self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)) if tts_params else self.config.get("OMNIVOICE_GUIDANCE_SCALE", 2.0)
+            try:
+                guidance_scale = float(raw_guidance_scale)
+            except Exception:
+                guidance_scale = 2.0
 
             if voice_id and voice_id.startswith("omnivoice:"):
                 ref_audio_path = voice_id[10:]
@@ -122,18 +133,48 @@ class OmniVoiceEngine(TTSEngine):
 
             language = tts_params.get("language", "Chinese") if tts_params else "Chinese"
 
-            audios = self._model.generate(
-                text=clean_text,  # Contains OmniVoice tags like [laughter], [sigh]
-                language=language,
-                ref_audio=ref_audio_path,
-                ref_text=ref_text,
-                num_step=num_step,
-                guidance_scale=guidance_scale,
-                instruct=instruct,
-            )
+            try:
+                audios = self._model.generate(
+                    text=clean_text,  # Contains OmniVoice tags like [laughter], [sigh]
+                    language=language,
+                    ref_audio=ref_audio_path,
+                    ref_text=ref_text,
+                    num_step=num_step,
+                    guidance_scale=guidance_scale,
+                    instruct=instruct,
+                )
+            except RuntimeError as e:
+                if "MPS backend out of memory" not in str(e):
+                    raise
+                try:
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except Exception:
+                    pass
+                self._model = None
+                self._forced_device = "cpu"
+                self.load_model()
+                audios = self._model.generate(
+                    text=clean_text,  # Contains OmniVoice tags like [laughter], [sigh]
+                    language=language,
+                    ref_audio=ref_audio_path,
+                    ref_text=ref_text,
+                    num_step=num_step,
+                    guidance_scale=guidance_scale,
+                    instruct=instruct,
+                )
 
             os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
-            torchaudio.save(output_path, audios[0].unsqueeze(0).cpu(), 24000)
+            wav = audios[0]
+            if not torch.is_tensor(wav):
+                wav = torch.tensor(wav)
+            if wav.ndim == 3 and wav.shape[0] == 1:
+                wav = wav.squeeze(0)
+            if wav.ndim == 1:
+                wav = wav.unsqueeze(0)
+            elif wav.ndim != 2:
+                raise ValueError(f"Unexpected audio tensor shape: {tuple(wav.shape)}")
+            torchaudio.save(output_path, wav.cpu(), 24000)
 
             return True
     

@@ -3,8 +3,11 @@ import sys
 
 # 确保可以引入 scripts 目录下的其他模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from utils import load_config, create_openai_client, get_unified_output_dir
+from utils import load_config, create_openai_client, get_unified_output_dir, setup_env
 from tts_engines import create_engine, EmotionParser, get_supported_engines, is_valid_engine, load_voice_config
+
+# 初始化环境变量（如模型缓存目录等）
+setup_env()
 
 import json
 import argparse
@@ -30,12 +33,43 @@ def split_text_into_paragraphs_and_sentences(text, max_len=150):
     # 返回段落列表（每个段落作为单个元素）
     return [[p] for p in paragraphs]
 
+def extract_instruct_from_brackets(text):
+    """
+    从文本中提取括号内的内容作为 instruct，并返回去除括号后的文本和 instruct。
+    支持中英文括号 () 和 （）。
+    """
+    import re
+    # 匹配括号在末尾的情况：如 "你好（温柔的说）"
+    match = re.search(r'[（\(](.*?)[）\)]$', text.strip())
+    if match:
+        instruct = match.group(1).strip()
+        clean_text = text[:match.start()].strip()
+        return clean_text, instruct
+    
+    # 如果括号不在末尾，但文本中包含括号，提取最后一个括号内容
+    matches = re.finditer(r'[（\(](.*?)[）\)]', text)
+    matches_list = list(matches)
+    if matches_list:
+        last_match = matches_list[-1]
+        instruct = last_match.group(1).strip()
+        # 移除该括号
+        clean_text = text[:last_match.start()] + text[last_match.end():]
+        return clean_text.strip(), instruct
+        
+    return text, None
+
 def synthesize_worker(args):
-    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir, engine, config, instruct = args
+    idx, text, api_key, voice_id, mode, model, tts_params, temp_dir, engine, config, default_instruct = args
+    
+    # 解析文本中的括号作为 instruct，优先级高于默认的 instruct
+    clean_text, parsed_instruct = extract_instruct_from_brackets(text)
+    current_instruct = parsed_instruct if parsed_instruct else default_instruct
+    
     # 使用.wav扩展名避免soundfile写入MP3格式问题
     temp_audio_path = os.path.join(temp_dir, f"chunk_{idx}.wav")
-    print(f"[{idx}] 正在合成: {text[:20]}...")
-    success = synthesize_speech(api_key, text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=instruct)
+    print(f"[{idx}] 正在合成: {clean_text[:20]}..." + (f" (Instruct: {current_instruct})" if current_instruct else ""))
+    
+    success = synthesize_speech(api_key, clean_text, voice_id, temp_audio_path, mode=mode, model=model, tts_params=tts_params, engine=engine, config=config, instruct=current_instruct)
     if success:
         return idx, temp_audio_path
     else:
@@ -203,14 +237,14 @@ def analyze_text_for_tts_params(text, config, tts_params_override=None):
     print("正在使用大模型分析文本情景以优化配音参数...")
     client = create_openai_client(llm_api_key, llm_url)
     
-    prompt = f"""你是一个专业的配音导演和 IndexTTS-2 调参专家。请分析以下文本的情境、情感和语气需求，并输出一组适合 IndexTTS-2 的参数。
+    prompt = f"""你是一个专业的配音导演和 TTS 调参专家。请分析以下文本的情境、情感和语气需求，并输出一组适合 TTS 引擎的参数。
 
-除了参数分析外，请务必**大力修改并润色文本**，使其极具自然口语表达感：
-1. **必须加入大量口语化语气词**（如：哈、啊、呢、哎、啦、哦等），让生硬的文字变得像日常聊天一样自然。
-2. 遇到长句时，不要随意切断成很多小句，**保持原有的段落结构**，只在合适的地方加入逗号或微小的停顿。
-3. 整体风格要像一个人在镜头前自然地聊天或演讲，绝对不能有“机器读稿感”或“书面宣读感”。
-4. **重要**：如果用户传入的文本中自带了情绪标签（如 `[惊讶:1.2]`, `[高兴:0.8]` 等），请**原样保留它们**在原本的位置。但是，**你绝对不能自己主动添加任何新的标签**。你的任务只是润色文字，禁止无中生有地添加任何 `[xxx]` 或 `[xxx:x.x]` 格式的内容。
-5. 请将修改后带有浓厚口语化风格的文本，放在 JSON 的 `refined_text` 字段中。**必须保证段落结构不变（原先有几段，修改后仍是几段）**。
+【重要规则】
+1. **绝对禁止添加任何语气词**：用户需要严谨的发言，不要画蛇添足地添加“哈、啊、呢、哎、啦、哦”等任何口语化语气词。
+2. **保持原文本内容不变**：不要修改、增加或删除原文本中的任何字词。
+3. **保留所有标签**：遇到原文本中已有的任何标签（如 `[laugh]`, `[高兴:1.2]` 等），必须**原样保留**在原位置，绝对不要更改、替换或删除它们。
+4. **不要自己发明标签**：你不能主动添加任何新的 `[xxx]` 格式的标签。
+5. **保持段落结构**：原文本有几段，输出的 `refined_text` 必须严格保持相同的段落结构，不要随意切断成很多小句。
 
 当前系统配置的基准配音参数为：
 - temperature: {default_params['temperature']}
@@ -229,7 +263,7 @@ def analyze_text_for_tts_params(text, config, tts_params_override=None):
     "top_p": 0.8,
     "max_text_tokens_per_segment": 130,
     "max_mel_tokens": 1500,
-    "refined_text": "修改后带有口语化语气词的文本..."
+    "refined_text": "严格保持原样但可以微调标点符号的文本..."
 }}
 
 待分析文本：
@@ -317,17 +351,17 @@ def auto_transcribe_audio(audio_path, config):
         sys.exit(1)
         
     config = load_config()
-    model_dir = config.get("MODEL_DIR")
-    os.makedirs(model_dir, exist_ok=True)
     
-    model_id = "iic/SenseVoiceSmall"
+    # 支持在 config.txt 中自定义 SenseVoice 模型路径（例如指向用户自己下载的在线版本目录）
+    model_id = config.get("FUNASR_SENSEVOICE_MODEL", "iic/SenseVoiceSmall")
+    if not model_id:
+        model_id = "iic/SenseVoiceSmall"
     
     try:
         # 直接使用 FunASR AutoModel 进行推理，避免引入 modelscope 的冗余依赖和潜在冲突
         model = AutoModel(
             model=model_id,
-            trust_remote_code=True,
-            remote_code="./model.py",
+            trust_remote_code=False,
             vad_model="fsmn-vad",
             vad_kwargs={"max_single_segment_time": 30000},
             device="cpu"
@@ -374,6 +408,9 @@ def auto_transcribe_audio(audio_path, config):
             sys.exit(1)
     except Exception as e:
         print(f"ASR 自动识别失败: {e}")
+        import traceback
+        traceback.print_exc()
+        import sys
         sys.exit(1)
 
 def get_voices_dir():
@@ -469,7 +506,8 @@ def clone_voice(api_key, ref_audio_path, text, voice_name, mode="api", model=Non
         need_reextract = True
 
     if target_models is None:
-        target_models = get_supported_engines()
+        # 如果未明确指定目标模型，仅提取当前配置中选择的引擎模型，避免资源浪费和无关错误
+        target_models = [config.get("TTS_ENGINE", "indextts")]
 
     meta_path = os.path.join(voice_path, "meta.json")
     existing_compatible_models = []

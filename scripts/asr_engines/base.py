@@ -10,6 +10,7 @@ class TimestampItem:
     text: str
     start_time: float  # seconds
     end_time: float    # seconds
+    speaker: Optional[str] = None
 
 
 @dataclass
