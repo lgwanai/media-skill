@@ -40,6 +40,16 @@ def load_config(config_path="config.txt"):
         config["INDEXTTS_MODE"] = "api"
     if "QWEN3TTS_MODE" not in config:
         config["QWEN3TTS_MODE"] = "api"
+    
+    # ASR 默认值处理
+    if "ASR_ENGINE" not in config:
+        config["ASR_ENGINE"] = "funasr"
+    if "QWEN3ASR_MODE" not in config:
+        config["QWEN3ASR_MODE"] = "local"
+    if "QWEN3ASR_BACKEND" not in config:
+        config["QWEN3ASR_BACKEND"] = "transformers"
+    if "QWEN3ASR_DEVICE" not in config:
+        config["QWEN3ASR_DEVICE"] = "cuda:0"
         
     return config
 

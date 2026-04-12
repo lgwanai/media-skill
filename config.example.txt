@@ -97,3 +97,34 @@ TTS_DEFAULT_TEMPERATURE = 0.65
 TTS_DEFAULT_TOP_K = 40
 TTS_DEFAULT_TOP_P = 0.8
 TTS_DEFAULT_MAX_TEXT_TOKENS = 130
+
+# ---------------------------------------------------------
+# 7. ASR 配置
+# ---------------------------------------------------------
+# ASR_ENGINE 可选: funasr, qwen3-asr
+# 
+# 引擎特性对比:
+# - funasr: 成熟稳定，支持说话人分离，适合干净音频
+# - qwen3-asr: SOTA 中文/多语言识别，字级毫秒时间戳，优秀噪音/BGM处理
+ASR_ENGINE = funasr
+
+# 7.1 FunASR 配置 (现有设置)
+FUNASR_PARAFORMER_MODEL = iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch
+FUNASR_VAD_MODEL = damo/speech_fsmn_vad_zh-cn-16k-common-pytorch
+FUNASR_PUNC_MODEL = damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
+FUNASR_SPK_MODEL = iic/speech_eres2net_sv_zh-cn_16k-common
+
+# 7.2 Qwen3-ASR 配置
+# QWEN3ASR_MODE 可选: local 或 api
+QWEN3ASR_MODE = local
+
+# 本地模式设置
+QWEN3ASR_MODEL = Qwen/Qwen3-ASR-1.7B
+QWEN3ASR_ALIGNER_MODEL = Qwen/Qwen3-ForcedAligner-0.6B
+QWEN3ASR_DEVICE = cuda:0
+QWEN3ASR_BACKEND = transformers
+QWEN3ASR_MAX_NEW_TOKENS = 256
+
+# API 模式设置 (DashScope)
+QWEN3ASR_API_KEY = your_dashscope_api_key_here
+QWEN3ASR_API_URL = https://dashscope.aliyuncs.com/api/v1

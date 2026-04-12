@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** Users can clone any voice from a short audio sample and generate natural-sounding speech with emotion control, choosing from multiple TTS models.
-**Current focus:** Phase 6 complete — All phases finished
+**Current focus:** Phase 7 complete — ASR底层支持Qwen3-ASR方案
 
 ## Phase Status
 
@@ -17,6 +17,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | 4 | ✓ Complete | - | 100% |
 | 5 | ✓ Complete | - | 100% |
 | 6 | ✓ Complete | 4/4 | 100% |
+| 7 | ✓ Complete | 4/4 | 100% |
 
 ## Accumulated Context
 
@@ -31,6 +32,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 - **4 TTS engines now available**: indextts, qwen3-tts, longcat-audiodit, omnivoice
 - **Phase 4 added**: Multi-model clone support with `compatible_models` array in meta.json
 - **Phase 4 added**: Cache invalidation on reference audio change
+- **Phase 7 added**: Pluggable ASR architecture with FunASR and Qwen3-ASR support
 
 ### Roadmap Evolution
 - Project initialized with 5 phases to add LongCat-AudioDiT and OmniVoice support
@@ -41,6 +43,7 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 - Phase 4 complete: Multi-model voice clone persistence with cache invalidation
 - Phase 5 complete: Emotion control already implemented via EmotionParser (IndexTTS-only)
 - Phase 6 added: Voice control methods (instruct-based and tag-based synthesis control)
+- Phase 7 complete: ASR底层支持Qwen3-ASR方案（双模型协同架构：Qwen3-ASR + ForcedAligner）
 
 ## Active Decisions
 
@@ -57,6 +60,8 @@ See: .planning/PROJECT.md (updated 2026-04-11)
 | Instruct warning mechanism | Complete | _warn_unsupported_instruct() in base, all non-OmniVoice warn |
 | CLI --instruct integration | Complete | dub command accepts --instruct, passed through to engines |
 | Voice config loader | Complete | load_voice_config() for markdown config files |
+| Pluggable ASR architecture | Complete | ASREngine ABC + FunASR + Qwen3-ASR implementations |
+| ASR engine switching | Complete | ASR_ENGINE config (funasr/qwen3-asr) |
 
 ---
-*Last updated: 2026-04-11 after completing Phase 6*
+*Last updated: 2026-04-12 after completing Phase 7*
