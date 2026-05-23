@@ -82,6 +82,18 @@ class IndexTTSEngine(TTSEngine):
                 device = "cpu"
 
             try:
+                try:
+                    from transformers.cache_utils import DynamicCache
+                    import transformers.cache_utils as cache_utils
+                    if not hasattr(cache_utils, 'OffloadedCache'):
+                        cache_utils.OffloadedCache = DynamicCache
+                    if not hasattr(cache_utils, 'QuantizedCacheConfig'):
+                        class _DummyConfig:
+                            pass
+                        cache_utils.QuantizedCacheConfig = _DummyConfig
+                except Exception:
+                    pass
+
                 from indextts.infer_v2 import IndexTTS2
 
                 self._model = IndexTTS2(
@@ -89,8 +101,21 @@ class IndexTTSEngine(TTSEngine):
                     model_dir=model_dir,
                     device=device,
                 )
-            except ImportError:
+            except Exception as e:
+                print(f"IndexTTS v2 加载失败 ({e})，尝试 v1 接口...")
                 try:
+                    try:
+                        from transformers.cache_utils import DynamicCache
+                        import transformers.cache_utils as cache_utils
+                        if not hasattr(cache_utils, 'OffloadedCache'):
+                            cache_utils.OffloadedCache = DynamicCache
+                        if not hasattr(cache_utils, 'QuantizedCacheConfig'):
+                            class _DummyConfig:
+                                pass
+                            cache_utils.QuantizedCacheConfig = _DummyConfig
+                    except Exception:
+                        pass
+
                     from indextts.infer import IndexTTS
 
                     self._model = IndexTTS(

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from tts_engines.longcat_audiodit_engine import LongCatAudioDiTEngine
     from tts_engines.omnivoice_engine import OmniVoiceEngine
 
-SUPPORTED_ENGINES = ["indextts", "qwen3-tts", "longcat-audiodit", "omnivoice"]
+SUPPORTED_ENGINES = ["indextts", "qwen3-tts", "longcat-audiodit", "omnivoice", "http"]
 
 
 def create_engine(config: dict) -> TTSEngine:
@@ -38,6 +38,9 @@ def create_engine(config: dict) -> TTSEngine:
     elif engine == "omnivoice":
         from tts_engines.omnivoice_engine import OmniVoiceEngine
         return OmniVoiceEngine(config)
+    elif engine == "http":
+        from tts_engines.http_engine import HTTTSEngine
+        return HTTTSEngine(config)
     else:
         raise ValueError(f"Unsupported TTS engine: '{engine}'. Supported: {', '.join(SUPPORTED_ENGINES)}")
 

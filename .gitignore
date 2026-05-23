@@ -14,3 +14,11 @@ __pycache__/
 *.py[cod]
 *.class
 index-tts/
+.planning/
+.claude/
+.ruff_cache/
+.benchmarks/
+.env_initialized
+audiodit/
+*.png
+*.mp3

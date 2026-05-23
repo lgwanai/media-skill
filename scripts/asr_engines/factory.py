@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from asr_engines.funasr_engine import FunASREngine
     from asr_engines.qwen3_asr_engine import Qwen3ASREngine
 
-SUPPORTED_ASR_ENGINES = ["funasr", "qwen3-asr"]
+SUPPORTED_ASR_ENGINES = ["funasr", "qwen3-asr", "http"]
 
 
 def create_asr_engine(config: dict) -> ASREngine:
@@ -30,6 +30,9 @@ def create_asr_engine(config: dict) -> ASREngine:
     elif engine == "qwen3-asr":
         from asr_engines.qwen3_asr_engine import Qwen3ASREngine
         return Qwen3ASREngine(config)
+    elif engine == "http":
+        from asr_engines.http_asr_engine import HTTPASREngine
+        return HTTPASREngine(config)
     else:
         raise ValueError(f"Unsupported ASR engine: '{engine}'. Supported: {', '.join(SUPPORTED_ASR_ENGINES)}")
 

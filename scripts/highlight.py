@@ -153,7 +153,7 @@ def process_highlights(video_path, output_dir=None):
         # 调用智能视频剪辑的四步法/五步法，剔除无用片段
         out_clip = os.path.join(output_dir, f"{idx+1}_{title}.mp4")
         print(f"正在对片段进行智能剪辑（剔除废话/无声等），输出到: {out_clip}")
-        process_smart_clip(temp_trans_json, temp_video, out_clip, config)
+        process_smart_clip(temp_trans_json, temp_video, out_clip)
         
         if os.path.exists(out_clip):
             final_outputs.append(out_clip)

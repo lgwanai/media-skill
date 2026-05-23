@@ -64,7 +64,70 @@ class Qwen3ASREngine(ASREngine):
         
         if self._mode == "api":
             return
-        
+
+        # Monkey patch check_model_inputs if needed (fix for transformers compatibility)
+        try:
+            from transformers.utils.generic import check_model_inputs
+            import transformers.utils.generic as generic_utils
+            
+            # If check_model_inputs is the one causing TypeError when called as @check_model_inputs()
+            # we can try to wrap it or replace it in the module before qwen_asr imports it.
+            original_check = check_model_inputs
+            
+            def patched_check(*args, **kwargs):
+                if len(args) == 1 and callable(args[0]):
+                    return original_check(args[0])
+                return original_check
+
+            generic_utils.check_model_inputs = patched_check
+        except Exception:
+            pass
+
+        # Fix for transformers 5.x compatibility: Qwen3ASRConfig missing thinker_config attribute
+        try:
+            from qwen_asr.core.transformers_backend.configuration_qwen3_asr import Qwen3ASRConfig
+            
+            # Patch get_text_config to handle missing thinker_config
+            if hasattr(Qwen3ASRConfig, "get_text_config"):
+                original_get_text_config = Qwen3ASRConfig.get_text_config
+                def patched_get_text_config(self, *args, **kwargs):
+                    try:
+                        return original_get_text_config(self, *args, **kwargs)
+                    except AttributeError:
+                        # Fallback for transformers 5.x validation
+                        return self
+                Qwen3ASRConfig.get_text_config = patched_get_text_config
+        except Exception:
+            pass
+
+        # Fix for transformers 5.x compatibility: Qwen3ASRThinkerConfig missing pad_token_id
+        try:
+            from qwen_asr.core.transformers_backend.configuration_qwen3_asr import Qwen3ASRThinkerConfig
+            original_thinker_init = Qwen3ASRThinkerConfig.__init__
+            def patched_thinker_init(self, *args, **kwargs):
+                original_thinker_init(self, *args, **kwargs)
+                if not hasattr(self, "pad_token_id"):
+                    self.pad_token_id = None
+            Qwen3ASRThinkerConfig.__init__ = patched_thinker_init
+        except Exception:
+            pass
+
+        # Fix for transformers 5.x compatibility: KeyError 'default' in ROPE_INIT_FUNCTIONS
+        try:
+            from qwen_asr.core.transformers_backend import modeling_qwen3_asr as modeling_module
+            import torch
+            if hasattr(modeling_module, "ROPE_INIT_FUNCTIONS"):
+                if "default" not in modeling_module.ROPE_INIT_FUNCTIONS:
+                    def default_rope_init(config, device):
+                        # Simple rotary embedding without scaling as fallback for 'default'
+                        dim = getattr(config, "hidden_size", 4096) // getattr(config, "num_attention_heads", 32)
+                        base = getattr(config, "rope_theta", 10000.0)
+                        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+                        return inv_freq, 1.0
+                    modeling_module.ROPE_INIT_FUNCTIONS["default"] = default_rope_init
+        except Exception:
+            pass
+
         model_name = self.config.get("QWEN3ASR_MODEL", "Qwen/Qwen3-ASR-1.7B")
         aligner_name = self.config.get("QWEN3ASR_ALIGNER_MODEL", "Qwen/Qwen3-ForcedAligner-0.6B")
         device, dtype = self._resolve_device_and_dtype()
