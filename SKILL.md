@@ -201,3 +201,17 @@ sh scripts/async_run.sh python scripts/ppt_video.py --scenes scenes.json [--voic
 ## 异常处理与性能
 - 并发推理时需注意缓存冲突（可通过队列或单线程处理避免）。
 - 遇到解码错误应跳过该片段并记录日志，不可中断整体长视频处理。
+
+## 自动更新：/media-update
+当用户请求"更新"、"升级"、"拉取最新代码"时，执行以下命令：
+```bash
+sh scripts/async_run.sh python scripts/media_update.py
+# 或直接执行
+python scripts/media_update.py
+```
+**功能特性**：
+- 自动从 GitHub 拉取最新代码
+- 旧文件压缩备份到 `backup/` 目录（带时间戳）
+- 保留 `config.txt` 等本地配置不被覆盖
+- 显示最近 10 条更新日志
+- 支持一键回滚（从 backup 目录恢复）
