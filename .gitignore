@@ -21,4 +21,13 @@ index-tts/
 .env_initialized
 audiodit/
 *.png
+*.jpg
+*.jpeg
 *.mp3
+*.mp4
+*.wav
+*.mov
+*.MOV
+*.m4a
+*.M4A
+*.log
